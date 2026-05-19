@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>House-DIY 原型一览</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="overview-body">
+  <div class="overview-page">
+    <a class="overview-back" href="index.html">← 返回交互原型</a>
+    <h1>House-DIY 页面原型一览</h1>
+    <p class="muted" style="color:#888">共 13 屏 · 对应产品主流程</p>
+    <div class="overview-grid" id="overviewGrid"></div>
+  </div>
+  <script src="screens.js"></script>
+  <script>
+    const grid = document.getElementById('overviewGrid');
+    SCREENS.forEach((s, i) => {
+      const card = document.createElement('article');
+      card.className = 'overview-card';
+      card.innerHTML = `
+        <header>
+          <strong>${s.id} ${s.title}</strong>
+          <a href="index.html" data-goto="${i}">打开 →</a>
+        </header>
+        <div class="overview-frame">
+          <div class="screen-inner">${s.html}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+    document.querySelectorAll('[data-goto]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        sessionStorage.setItem('houseDiyProtoIndex', a.dataset.goto);
+      });
+    });
+    if (sessionStorage.getItem('houseDiyProtoIndex')) {
+      /* index.html 可读取 */
+    }
+  </script>
+</body>
+</html>

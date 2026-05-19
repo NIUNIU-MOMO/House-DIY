@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>用户流程图</title>
+  <link rel="stylesheet" href="../assets/prototype.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body style="padding:24px;">
+  <p><a href="../index.html">返回原型导航</a></p>
+  <h1>用户主流程</h1>
+  <pre class="mermaid">
+flowchart TD
+  Start([打开应用]) --> Home[首页]
+  Home --> Upload[上传平面图]
+  Upload --> Editor[2D 校对]
+  Editor --> Studio[设计工作室]
+  Studio --> Done[2D 画廊 + 3D 漫游]
+  </pre>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+</body>
+</html>

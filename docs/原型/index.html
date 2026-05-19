@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>House-DIY 页面原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="proto-nav" id="protoNav">
+      <div class="proto-brand">
+        <span class="logo-mark">HD</span>
+        <div>
+          <strong>House-DIY</strong>
+          <small>页面原型 v1.0</small>
+        </div>
+      </div>
+      <p class="proto-hint">点击切换界面 · 产品与开发对齐用</p>
+      <nav class="screen-list" id="screenList"></nav>
+      <a class="overview-link" href="overview.html">一览全部原型缩略图</a>
+      <div class="service-pill">
+        <span class="dot ok"></span> oMLX
+        <span class="dot ok"></span> ComfyUI
+        <span class="dot warn"></span> API
+      </div>
+    </aside>
+
+    <main class="proto-stage">
+      <header class="stage-toolbar">
+        <span class="screen-id" id="screenId">01</span>
+        <h1 id="screenTitle">项目列表</h1>
+        <div class="toolbar-actions">
+          <button type="button" class="btn ghost" id="prevBtn">上一屏</button>
+          <button type="button" class="btn primary" id="nextBtn">下一屏</button>
+        </div>
+      </header>
+
+      <div class="device-frame">
+        <div class="browser-chrome">
+          <span></span><span></span><span></span>
+          <em>house-diy.local — 本地离线</em>
+        </div>
+        <div class="screen-viewport" id="screenViewport"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="screens.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
