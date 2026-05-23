@@ -1,0 +1,855 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "sku": "sofa_3seat_modern_01",
+      "name": "三人现代沙发",
+      "category": "sofa",
+      "width": 2.2,
+      "depth": 0.95,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_3seat_modern_01.glb"
+    },
+    {
+      "sku": "sofa_2seat_compact_01",
+      "name": "双人紧凑沙发",
+      "category": "sofa",
+      "width": 1.6,
+      "depth": 0.9,
+      "height": 0.82,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_2seat_compact_01.glb"
+    },
+    {
+      "sku": "bed_queen_modern_01",
+      "name": "Queen 现代床",
+      "category": "bed",
+      "width": 1.6,
+      "depth": 2.0,
+      "height": 0.55,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_queen_modern_01.glb"
+    },
+    {
+      "sku": "bed_king_luxury_01",
+      "name": "King 轻奢床",
+      "category": "bed",
+      "width": 1.8,
+      "depth": 2.1,
+      "height": 0.6,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_king_luxury_01.glb"
+    },
+    {
+      "sku": "dining_table_rect_4_01",
+      "name": "四人餐桌",
+      "category": "table",
+      "width": 1.4,
+      "depth": 0.8,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/dining_table_rect_4_01.glb"
+    },
+    {
+      "sku": "dining_table_round_6_01",
+      "name": "六人圆餐桌",
+      "category": "table",
+      "width": 1.3,
+      "depth": 1.3,
+      "height": 0.76,
+      "anchor": "floor_center",
+      "glb_path": "furniture/dining_table_round_6_01.glb"
+    },
+    {
+      "sku": "dining_chair_01",
+      "name": "餐椅",
+      "category": "chair",
+      "width": 0.45,
+      "depth": 0.5,
+      "height": 0.9,
+      "anchor": "floor_center",
+      "glb_path": "furniture/dining_chair_01.glb"
+    },
+    {
+      "sku": "coffee_table_low_01",
+      "name": "茶几",
+      "category": "table",
+      "width": 1.0,
+      "depth": 0.6,
+      "height": 0.42,
+      "anchor": "floor_center",
+      "glb_path": "furniture/coffee_table_low_01.glb"
+    },
+    {
+      "sku": "tv_stand_01",
+      "name": "电视柜",
+      "category": "cabinet",
+      "width": 1.8,
+      "depth": 0.45,
+      "height": 0.5,
+      "anchor": "floor_center",
+      "glb_path": "furniture/tv_stand_01.glb"
+    },
+    {
+      "sku": "bookshelf_tall_01",
+      "name": "高书柜",
+      "category": "cabinet",
+      "width": 0.9,
+      "depth": 0.35,
+      "height": 2.0,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bookshelf_tall_01.glb"
+    },
+    {
+      "sku": "wardrobe_slide_01",
+      "name": "推拉衣柜",
+      "category": "cabinet",
+      "width": 2.0,
+      "depth": 0.6,
+      "height": 2.4,
+      "anchor": "floor_center",
+      "glb_path": "furniture/wardrobe_slide_01.glb"
+    },
+    {
+      "sku": "desk_office_01",
+      "name": "书桌",
+      "category": "desk",
+      "width": 1.2,
+      "depth": 0.6,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_office_01.glb"
+    },
+    {
+      "sku": "nightstand_01",
+      "name": "床头柜",
+      "category": "cabinet",
+      "width": 0.5,
+      "depth": 0.4,
+      "height": 0.55,
+      "anchor": "floor_center",
+      "glb_path": "furniture/nightstand_01.glb"
+    },
+    {
+      "sku": "sideboard_01",
+      "name": "餐边柜",
+      "category": "cabinet",
+      "width": 1.5,
+      "depth": 0.45,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sideboard_01.glb"
+    },
+    {
+      "sku": "floor_lamp_01",
+      "name": "落地灯",
+      "category": "light",
+      "width": 0.35,
+      "depth": 0.35,
+      "height": 1.6,
+      "anchor": "floor_center",
+      "glb_path": "furniture/floor_lamp_01.glb"
+    },
+    {
+      "sku": "pendant_lamp_01",
+      "name": "吊灯",
+      "category": "light",
+      "width": 0.5,
+      "depth": 0.5,
+      "height": 0.3,
+      "anchor": "ceiling_center",
+      "glb_path": "furniture/pendant_lamp_01.glb"
+    },
+    {
+      "sku": "rug_area_l_01",
+      "name": "L 型地毯",
+      "category": "decor",
+      "width": 2.4,
+      "depth": 1.6,
+      "height": 0.02,
+      "anchor": "floor_center",
+      "glb_path": "furniture/rug_area_l_01.glb"
+    },
+    {
+      "sku": "kitchen_island_01",
+      "name": "厨房中岛",
+      "category": "kitchen",
+      "width": 1.2,
+      "depth": 0.8,
+      "height": 0.9,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_island_01.glb"
+    },
+    {
+      "sku": "kitchen_cabinet_base_01",
+      "name": "地柜",
+      "category": "kitchen",
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_cabinet_base_01.glb"
+    },
+    {
+      "sku": "bathroom_vanity_01",
+      "name": "浴室柜",
+      "category": "bathroom",
+      "width": 0.9,
+      "depth": 0.5,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_vanity_01.glb"
+    },
+    {
+      "sku": "toilet_standard_01",
+      "name": "马桶",
+      "category": "bathroom",
+      "width": 0.4,
+      "depth": 0.65,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/toilet_standard_01.glb"
+    },
+    {
+      "sku": "shower_enclosure_01",
+      "name": "淋浴房",
+      "category": "bathroom",
+      "width": 0.9,
+      "depth": 0.9,
+      "height": 2.0,
+      "anchor": "floor_center",
+      "glb_path": "furniture/shower_enclosure_01.glb"
+    },
+    {
+      "sku": "sofa_corner_v01",
+      "name": "沙发·corner",
+      "category": "sofa",
+      "width": 2.05,
+      "depth": 1.04,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_corner_v01.glb"
+    },
+    {
+      "sku": "sofa_sectional_v02",
+      "name": "沙发·sectional",
+      "category": "sofa",
+      "width": 2.1,
+      "depth": 1.08,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_sectional_v02.glb"
+    },
+    {
+      "sku": "sofa_minimal_v03",
+      "name": "沙发·minimal",
+      "category": "sofa",
+      "width": 2.15,
+      "depth": 1.0,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_minimal_v03.glb"
+    },
+    {
+      "sku": "sofa_linen_v04",
+      "name": "沙发·linen",
+      "category": "sofa",
+      "width": 2.2,
+      "depth": 1.04,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_linen_v04.glb"
+    },
+    {
+      "sku": "sofa_leather_v05",
+      "name": "沙发·leather",
+      "category": "sofa",
+      "width": 2.0,
+      "depth": 1.08,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_leather_v05.glb"
+    },
+    {
+      "sku": "bed_single_v06",
+      "name": "床·single",
+      "category": "bed",
+      "width": 1.55,
+      "depth": 2.0,
+      "height": 0.61,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_single_v06.glb"
+    },
+    {
+      "sku": "bed_bunk_v07",
+      "name": "床·bunk",
+      "category": "bed",
+      "width": 1.6,
+      "depth": 2.04,
+      "height": 0.64,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_bunk_v07.glb"
+    },
+    {
+      "sku": "bed_platform_v08",
+      "name": "床·platform",
+      "category": "bed",
+      "width": 1.65,
+      "depth": 2.08,
+      "height": 0.55,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_platform_v08.glb"
+    },
+    {
+      "sku": "bed_storage_v09",
+      "name": "床·storage",
+      "category": "bed",
+      "width": 1.7,
+      "depth": 2.0,
+      "height": 0.58,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_storage_v09.glb"
+    },
+    {
+      "sku": "bed_kids_v10",
+      "name": "床·kids",
+      "category": "bed",
+      "width": 1.5,
+      "depth": 2.04,
+      "height": 0.61,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_kids_v10.glb"
+    },
+    {
+      "sku": "chair_accent_v11",
+      "name": "椅·accent",
+      "category": "chair",
+      "width": 0.55,
+      "depth": 0.58,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_accent_v11.glb"
+    },
+    {
+      "sku": "chair_lounge_v12",
+      "name": "椅·lounge",
+      "category": "chair",
+      "width": 0.6,
+      "depth": 0.5,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_lounge_v12.glb"
+    },
+    {
+      "sku": "chair_bar_v13",
+      "name": "椅·bar",
+      "category": "chair",
+      "width": 0.65,
+      "depth": 0.54,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_bar_v13.glb"
+    },
+    {
+      "sku": "chair_stool_v14",
+      "name": "椅·stool",
+      "category": "chair",
+      "width": 0.7,
+      "depth": 0.58,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_stool_v14.glb"
+    },
+    {
+      "sku": "chair_bench_v15",
+      "name": "椅·bench",
+      "category": "chair",
+      "width": 0.5,
+      "depth": 0.5,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_bench_v15.glb"
+    },
+    {
+      "sku": "table_side_v16",
+      "name": "桌·side",
+      "category": "table",
+      "width": 1.05,
+      "depth": 0.64,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/table_side_v16.glb"
+    },
+    {
+      "sku": "table_console_v17",
+      "name": "桌·console",
+      "category": "table",
+      "width": 1.1,
+      "depth": 0.68,
+      "height": 0.78,
+      "anchor": "floor_center",
+      "glb_path": "furniture/table_console_v17.glb"
+    },
+    {
+      "sku": "table_study_v18",
+      "name": "桌·study",
+      "category": "table",
+      "width": 1.15,
+      "depth": 0.6,
+      "height": 0.81,
+      "anchor": "floor_center",
+      "glb_path": "furniture/table_study_v18.glb"
+    },
+    {
+      "sku": "table_extend_v19",
+      "name": "桌·extend",
+      "category": "table",
+      "width": 1.2,
+      "depth": 0.64,
+      "height": 0.84,
+      "anchor": "floor_center",
+      "glb_path": "furniture/table_extend_v19.glb"
+    },
+    {
+      "sku": "table_nest_v20",
+      "name": "桌·nest",
+      "category": "table",
+      "width": 1.0,
+      "depth": 0.68,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/table_nest_v20.glb"
+    },
+    {
+      "sku": "cabinet_low_v21",
+      "name": "柜·low",
+      "category": "cabinet",
+      "width": 1.25,
+      "depth": 0.45,
+      "height": 0.93,
+      "anchor": "floor_center",
+      "glb_path": "furniture/cabinet_low_v21.glb"
+    },
+    {
+      "sku": "cabinet_display_v22",
+      "name": "柜·display",
+      "category": "cabinet",
+      "width": 1.3,
+      "depth": 0.49,
+      "height": 0.96,
+      "anchor": "floor_center",
+      "glb_path": "furniture/cabinet_display_v22.glb"
+    },
+    {
+      "sku": "cabinet_shoe_v23",
+      "name": "柜·shoe",
+      "category": "cabinet",
+      "width": 1.35,
+      "depth": 0.53,
+      "height": 0.99,
+      "anchor": "floor_center",
+      "glb_path": "furniture/cabinet_shoe_v23.glb"
+    },
+    {
+      "sku": "cabinet_entry_v24",
+      "name": "柜·entry",
+      "category": "cabinet",
+      "width": 1.4,
+      "depth": 0.45,
+      "height": 0.9,
+      "anchor": "floor_center",
+      "glb_path": "furniture/cabinet_entry_v24.glb"
+    },
+    {
+      "sku": "cabinet_media_v25",
+      "name": "柜·media",
+      "category": "cabinet",
+      "width": 1.2,
+      "depth": 0.49,
+      "height": 0.93,
+      "anchor": "floor_center",
+      "glb_path": "furniture/cabinet_media_v25.glb"
+    },
+    {
+      "sku": "desk_standing_v26",
+      "name": "书桌·standing",
+      "category": "desk",
+      "width": 1.45,
+      "depth": 0.78,
+      "height": 0.81,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_standing_v26.glb"
+    },
+    {
+      "sku": "desk_compact_v27",
+      "name": "书桌·compact",
+      "category": "desk",
+      "width": 1.5,
+      "depth": 0.7,
+      "height": 0.84,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_compact_v27.glb"
+    },
+    {
+      "sku": "desk_l_shape_v28",
+      "name": "书桌·l_shape",
+      "category": "desk",
+      "width": 1.55,
+      "depth": 0.74,
+      "height": 0.75,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_l_shape_v28.glb"
+    },
+    {
+      "sku": "desk_kids_v29",
+      "name": "书桌·kids",
+      "category": "desk",
+      "width": 1.6,
+      "depth": 0.78,
+      "height": 0.78,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_kids_v29.glb"
+    },
+    {
+      "sku": "desk_gaming_v30",
+      "name": "书桌·gaming",
+      "category": "desk",
+      "width": 1.4,
+      "depth": 0.7,
+      "height": 0.81,
+      "anchor": "floor_center",
+      "glb_path": "furniture/desk_gaming_v30.glb"
+    },
+    {
+      "sku": "light_table_v31",
+      "name": "灯·table",
+      "category": "light",
+      "width": 0.35,
+      "depth": 0.34,
+      "height": 0.59,
+      "anchor": "floor_center",
+      "glb_path": "furniture/light_table_v31.glb"
+    },
+    {
+      "sku": "light_wall_v32",
+      "name": "灯·wall",
+      "category": "light",
+      "width": 0.4,
+      "depth": 0.38,
+      "height": 0.5,
+      "anchor": "floor_center",
+      "glb_path": "furniture/light_wall_v32.glb"
+    },
+    {
+      "sku": "light_track_v33",
+      "name": "灯·track",
+      "category": "light",
+      "width": 0.45,
+      "depth": 0.3,
+      "height": 0.53,
+      "anchor": "floor_center",
+      "glb_path": "furniture/light_track_v33.glb"
+    },
+    {
+      "sku": "light_spot_v34",
+      "name": "灯·spot",
+      "category": "light",
+      "width": 0.5,
+      "depth": 0.34,
+      "height": 0.56,
+      "anchor": "floor_center",
+      "glb_path": "furniture/light_spot_v34.glb"
+    },
+    {
+      "sku": "light_strip_v35",
+      "name": "灯·strip",
+      "category": "light",
+      "width": 0.3,
+      "depth": 0.38,
+      "height": 0.59,
+      "anchor": "floor_center",
+      "glb_path": "furniture/light_strip_v35.glb"
+    },
+    {
+      "sku": "decor_plant_v36",
+      "name": "装饰·plant",
+      "category": "decor",
+      "width": 0.65,
+      "depth": 0.3,
+      "height": 1.2,
+      "anchor": "floor_center",
+      "glb_path": "furniture/decor_plant_v36.glb"
+    },
+    {
+      "sku": "decor_mirror_v37",
+      "name": "装饰·mirror",
+      "category": "decor",
+      "width": 0.7,
+      "depth": 0.34,
+      "height": 1.23,
+      "anchor": "floor_center",
+      "glb_path": "furniture/decor_mirror_v37.glb"
+    },
+    {
+      "sku": "decor_art_v38",
+      "name": "装饰·art",
+      "category": "decor",
+      "width": 0.75,
+      "depth": 0.38,
+      "height": 1.26,
+      "anchor": "floor_center",
+      "glb_path": "furniture/decor_art_v38.glb"
+    },
+    {
+      "sku": "decor_vase_v39",
+      "name": "装饰·vase",
+      "category": "decor",
+      "width": 0.8,
+      "depth": 0.3,
+      "height": 1.29,
+      "anchor": "floor_center",
+      "glb_path": "furniture/decor_vase_v39.glb"
+    },
+    {
+      "sku": "decor_shelf_v40",
+      "name": "装饰·shelf",
+      "category": "decor",
+      "width": 0.6,
+      "depth": 0.34,
+      "height": 1.2,
+      "anchor": "floor_center",
+      "glb_path": "furniture/decor_shelf_v40.glb"
+    },
+    {
+      "sku": "kitchen_hood_v41",
+      "name": "厨电·hood",
+      "category": "kitchen",
+      "width": 0.95,
+      "depth": 0.68,
+      "height": 0.93,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_hood_v41.glb"
+    },
+    {
+      "sku": "kitchen_fridge_v42",
+      "name": "厨电·fridge",
+      "category": "kitchen",
+      "width": 1.0,
+      "depth": 0.6,
+      "height": 0.96,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_fridge_v42.glb"
+    },
+    {
+      "sku": "kitchen_oven_v43",
+      "name": "厨电·oven",
+      "category": "kitchen",
+      "width": 1.05,
+      "depth": 0.64,
+      "height": 0.99,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_oven_v43.glb"
+    },
+    {
+      "sku": "kitchen_sink_v44",
+      "name": "厨电·sink",
+      "category": "kitchen",
+      "width": 1.1,
+      "depth": 0.68,
+      "height": 0.9,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_sink_v44.glb"
+    },
+    {
+      "sku": "kitchen_wall_cab_v45",
+      "name": "厨电·wall_cab",
+      "category": "kitchen",
+      "width": 0.9,
+      "depth": 0.6,
+      "height": 0.93,
+      "anchor": "floor_center",
+      "glb_path": "furniture/kitchen_wall_cab_v45.glb"
+    },
+    {
+      "sku": "bathroom_tub_v46",
+      "name": "卫浴·tub",
+      "category": "bathroom",
+      "width": 0.75,
+      "depth": 0.54,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_tub_v46.glb"
+    },
+    {
+      "sku": "bathroom_basin_v47",
+      "name": "卫浴·basin",
+      "category": "bathroom",
+      "width": 0.8,
+      "depth": 0.58,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_basin_v47.glb"
+    },
+    {
+      "sku": "bathroom_mirror_cab_v48",
+      "name": "卫浴·mirror_cab",
+      "category": "bathroom",
+      "width": 0.85,
+      "depth": 0.5,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_mirror_cab_v48.glb"
+    },
+    {
+      "sku": "bathroom_towel_rack_v49",
+      "name": "卫浴·towel_rack",
+      "category": "bathroom",
+      "width": 0.9,
+      "depth": 0.54,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_towel_rack_v49.glb"
+    },
+    {
+      "sku": "bathroom_bidet_v50",
+      "name": "卫浴·bidet",
+      "category": "bathroom",
+      "width": 0.7,
+      "depth": 0.58,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bathroom_bidet_v50.glb"
+    },
+    {
+      "sku": "sofa_sectional_v01",
+      "name": "沙发·sectional",
+      "category": "sofa",
+      "width": 2.05,
+      "depth": 1.04,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_sectional_v01.glb"
+    },
+    {
+      "sku": "sofa_minimal_v02",
+      "name": "沙发·minimal",
+      "category": "sofa",
+      "width": 2.1,
+      "depth": 1.08,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_minimal_v02.glb"
+    },
+    {
+      "sku": "sofa_linen_v03",
+      "name": "沙发·linen",
+      "category": "sofa",
+      "width": 2.15,
+      "depth": 1.0,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_linen_v03.glb"
+    },
+    {
+      "sku": "sofa_leather_v04",
+      "name": "沙发·leather",
+      "category": "sofa",
+      "width": 2.2,
+      "depth": 1.04,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/sofa_leather_v04.glb"
+    },
+    {
+      "sku": "bed_single_v05",
+      "name": "床·single",
+      "category": "bed",
+      "width": 1.5,
+      "depth": 2.08,
+      "height": 0.58,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_single_v05.glb"
+    },
+    {
+      "sku": "bed_bunk_v06",
+      "name": "床·bunk",
+      "category": "bed",
+      "width": 1.55,
+      "depth": 2.0,
+      "height": 0.61,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_bunk_v06.glb"
+    },
+    {
+      "sku": "bed_platform_v07",
+      "name": "床·platform",
+      "category": "bed",
+      "width": 1.6,
+      "depth": 2.04,
+      "height": 0.64,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_platform_v07.glb"
+    },
+    {
+      "sku": "bed_storage_v08",
+      "name": "床·storage",
+      "category": "bed",
+      "width": 1.65,
+      "depth": 2.08,
+      "height": 0.55,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_storage_v08.glb"
+    },
+    {
+      "sku": "bed_kids_v09",
+      "name": "床·kids",
+      "category": "bed",
+      "width": 1.7,
+      "depth": 2.0,
+      "height": 0.58,
+      "anchor": "floor_center",
+      "glb_path": "furniture/bed_kids_v09.glb"
+    },
+    {
+      "sku": "chair_accent_v10",
+      "name": "椅·accent",
+      "category": "chair",
+      "width": 0.5,
+      "depth": 0.54,
+      "height": 0.91,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_accent_v10.glb"
+    },
+    {
+      "sku": "chair_lounge_v11",
+      "name": "椅·lounge",
+      "category": "chair",
+      "width": 0.55,
+      "depth": 0.58,
+      "height": 0.94,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_lounge_v11.glb"
+    },
+    {
+      "sku": "chair_bar_v12",
+      "name": "椅·bar",
+      "category": "chair",
+      "width": 0.6,
+      "depth": 0.5,
+      "height": 0.85,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_bar_v12.glb"
+    },
+    {
+      "sku": "chair_stool_v13",
+      "name": "椅·stool",
+      "category": "chair",
+      "width": 0.65,
+      "depth": 0.54,
+      "height": 0.88,
+      "anchor": "floor_center",
+      "glb_path": "furniture/chair_stool_v13.glb"
+    }
+  ]
+}

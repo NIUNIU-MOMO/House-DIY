@@ -1,0 +1,39 @@
+{
+  "scale": 100.0,
+  "status": "draft",
+  "walls": [
+    {
+      "id": "w1",
+      "points": [{"x": 0, "y": 0}, {"x": 400, "y": 0}],
+      "thickness": 0.2
+    },
+    {
+      "id": "w2",
+      "points": [{"x": 400, "y": 0}, {"x": 400, "y": 300}],
+      "thickness": 0.2
+    }
+  ],
+  "rooms": [
+    {
+      "id": "r1",
+      "name": "客厅",
+      "polygon": [
+        {"x": 0, "y": 0},
+        {"x": 400, "y": 0},
+        {"x": 400, "y": 300},
+        {"x": 0, "y": 300}
+      ],
+      "area": 28.8
+    }
+  ],
+  "openings": [
+    {
+      "id": "o1",
+      "type": "door",
+      "wall_id": "w1",
+      "position": 0.5,
+      "width": 0.9,
+      "connects": ["r1", "r2"]
+    }
+  ]
+}

@@ -1229,6 +1229,103 @@ body {
   font-size: 0.9rem;
 }
 
+/* —— 交互增强 —— */
+.project-card:not(.add) {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.project-card:not(.add):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.project-card.add {
+  cursor: pointer;
+}
+
+.upload-zone {
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.upload-zone:hover,
+.upload-zone.has-file {
+  border-color: var(--accent-2);
+  background: rgba(44, 74, 62, 0.06);
+}
+
+.rag-card,
+.render-thumb,
+.fake-3d,
+.know-item,
+.chips span,
+.room-list li,
+.room-jump li {
+  cursor: pointer;
+}
+
+.chips span:hover,
+.room-list li:hover,
+.room-jump li:hover {
+  opacity: 0.85;
+}
+
+.big-render {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.render-label {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.proto-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--accent-2);
+  color: #fff;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow);
+  animation: toast-in 0.25s ease;
+  max-width: 320px;
+}
+
+.proto-toast.warn {
+  background: #b45309;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.viewer-3d:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.furniture.sofa {
+  position: absolute;
+  transition: left 0.12s, top 0.12s;
+}
+
+.portal {
+  cursor: pointer;
+}
+
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }
   .proto-nav { max-height: 200px; }
