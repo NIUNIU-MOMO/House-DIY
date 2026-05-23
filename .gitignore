@@ -1,0 +1,27 @@
+.run/
+*.pid
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+server/data/
+server/house_diy.db
+server/.env
+
+# Node
+web/node_modules/
+web/dist/
+web/.eslintcache
+web/test-results/
+web/playwright-report/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# 本地 oMLX 管理脚本（含 API Key，勿提交）
+script/omlx_admin_config.py

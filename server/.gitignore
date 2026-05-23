@@ -1,0 +1,6 @@
+data/
+house_diy.db
+__pycache__/
+.pytest_cache/
+.env
+*.pyc
