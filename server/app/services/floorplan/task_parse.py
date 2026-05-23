@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import cv2
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,13 @@ from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services.floorplan import storage
 from app.services.floorplan.parser_cv import apply_cv_walls, extract_walls_from_image
-from app.services.floorplan.parser_vlm import load_prompt, merge_vlm_result, parse_vlm_response
+from app.services.floorplan.parser_vlm import (
+    apply_coord_offset,
+    load_prompt_for_image,
+    merge_vlm_result,
+    parse_vlm_response,
+)
+from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
 from app.services.omlx_client import OmlxClient, get_omlx_client
 
 PARSE_STEPS = [
@@ -103,8 +110,25 @@ def create_floorplan_parse_task(db: Session, project_id: int) -> Task:
     return task
 
 
-def preprocess_image(source_path: str) -> str:
-    return source_path
+def preprocess_image(source_path: str) -> tuple[str, dict]:
+    return preprocess_floorplan_image(source_path)
+
+
+def _offset_walls(walls, offset_x: float, offset_y: float):
+    from app.schemas.floorplan import Wall
+
+    if offset_x == 0 and offset_y == 0:
+        return walls
+    shifted: list[Wall] = []
+    for wall in walls:
+        shifted.append(
+            Wall(
+                id=wall.id,
+                points=apply_coord_offset(wall.points, offset_x, offset_y),
+                thickness=wall.thickness,
+            )
+        )
+    return shifted
 
 
 def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None) -> None:
@@ -141,23 +165,43 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         )
         _notify_task(task)
 
-        processed_path = preprocess_image(str(source_path))
+        processed_path, preprocess_meta = preprocess_image(str(source_path))
+        storage.patch_meta(task.project_id, preprocess_meta)
+        crop_offset = preprocess_meta.get("crop_offset", (0, 0))
+        if isinstance(crop_offset, list):
+            crop_offset = tuple(crop_offset)
+        source_w = int(preprocess_meta.get("source_width") or 0)
+        source_h = int(preprocess_meta.get("source_height") or 0)
         _update_task(db, task, progress=20, step=0, step_label=PARSE_STEPS[0])
         _notify_task(task)
 
         _update_task(db, task, progress=30, step=1, step_label=PARSE_STEPS[1])
         _notify_task(task)
 
+        image = cv2.imread(processed_path)
+        img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
+        if not source_w or not source_h:
+            source_w, source_h = img_w, img_h
         mime_type = mimetypes.guess_type(processed_path)[0] or "image/png"
         image_base64 = base64.b64encode(Path(processed_path).read_bytes()).decode("ascii")
-        vlm_text = client.chat_vision(load_prompt(), image_base64, mime_type=mime_type)
+        vlm_text = client.chat_vision(
+            load_prompt_for_image(img_w, img_h),
+            image_base64,
+            mime_type=mime_type,
+        )
         vlm_result = parse_vlm_response(vlm_text)
-        draft = merge_vlm_result(vlm_result)
+        offset_x, offset_y = crop_offset if isinstance(crop_offset, tuple) else (0.0, 0.0)
+        draft = merge_vlm_result(
+            vlm_result,
+            coord_offset=(float(offset_x), float(offset_y)),
+            image_size=(source_w, source_h),
+        )
 
         _update_task(db, task, progress=60, step=2, step_label=PARSE_STEPS[2])
         _notify_task(task)
 
         cv_walls = extract_walls_from_image(Path(processed_path), vlm_result)
+        cv_walls = _offset_walls(cv_walls, float(offset_x), float(offset_y))
         draft = apply_cv_walls(draft, cv_walls)
 
         _update_task(db, task, progress=85, step=3, step_label=PARSE_STEPS[3])

@@ -25,6 +25,8 @@ const {
   roomLabel,
   roomCenter,
   confirmFloorplan,
+  goBackToParse,
+  goBackToUpload,
 } = useFloorPlanCanvas(projectId)
 
 const wallStroke = computed(() => (floorplan.value?.walls.length ? 3 : 2))
@@ -68,7 +70,22 @@ onMounted(load)
       </div>
       <div class="floor-canvas">
         <svg :viewBox="viewBox" class="floor-svg">
-          <rect width="100%" height="100%" fill="#f8f4ee" />
+          <image
+            v-if="floorplan.source_url && floorplan.source_width && floorplan.source_height"
+            :href="floorplan.source_url"
+            x="0"
+            y="0"
+            :width="floorplan.source_width"
+            :height="floorplan.source_height"
+            class="floor-underlay"
+            preserveAspectRatio="none"
+          />
+          <rect
+            v-else
+            width="100%"
+            height="100%"
+            fill="#f8f4ee"
+          />
           <g v-for="room in floorplan.rooms" :key="room.id">
             <polygon
               :points="room.polygon.map((p) => `${p.x},${p.y}`).join(' ')"
@@ -96,7 +113,7 @@ onMounted(load)
             </text>
           </g>
         </svg>
-        <span class="anno">选择房间修改名称 · 确认后进入设计</span>
+        <span class="anno">底图为原图 · 半透明区域为 AI 识别房间 · 可改名称后确认</span>
       </div>
     </div>
 
@@ -119,14 +136,22 @@ onMounted(load)
         <span class="muted">{{ selectedRoom.id }}</span>
       </div>
       <p v-if="error" class="error-text">{{ error }}</p>
-      <button
-        type="button"
-        class="btn primary block"
-        :disabled="saving || !floorplan.rooms.length"
-        @click="confirmFloorplan"
-      >
-        确认户型，进入设计 →
-      </button>
+      <div class="inspector-actions">
+        <button type="button" class="btn ghost block" @click="goBackToParse">
+          ← 返回解析
+        </button>
+        <button type="button" class="btn ghost block subtle" @click="goBackToUpload">
+          重新上传户型
+        </button>
+        <button
+          type="button"
+          class="btn primary block"
+          :disabled="saving || !floorplan.rooms.length"
+          @click="confirmFloorplan"
+        >
+          确认户型，进入设计 →
+        </button>
+      </div>
     </aside>
   </div>
 </template>
@@ -154,12 +179,28 @@ onMounted(load)
 
 .btn.block {
   width: 100%;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
   margin-top: 1rem;
+}
+
+.btn.subtle {
+  font-size: 0.82rem;
+  opacity: 0.85;
 }
 
 .error-text {
   color: #d48f8f;
   font-size: 0.85rem;
   margin: 0.75rem 0;
+}
+
+.floor-underlay {
+  opacity: 0.5;
+  pointer-events: none;
 }
 </style>

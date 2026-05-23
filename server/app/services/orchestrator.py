@@ -1,5 +1,7 @@
 import asyncio
 import json
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -46,7 +48,21 @@ def _notify_pipeline(project_id: int, task: Task, pipeline_step: str, event: str
     if extra:
         payload.update(extra)
     ws_manager.notify_sync(project_id, payload)
-    _notify_task(task)
+    if event != "room_poll":
+        _notify_task(task)
+
+
+def _render_progress(total_rooms: int, room_index: int, room_ratio: float = 0.0) -> float:
+    """
+    计算 2D 渲染阶段总进度
+
+    @param total_rooms 房间总数
+    @param room_index 当前房间索引（0-based）
+    @param room_ratio 当前房间内部进度 0~1
+    @return 总进度 30~72
+    """
+    span = 40.0 / max(total_rooms, 1)
+    return 30.0 + room_index * span + span * min(max(room_ratio, 0.0), 1.0)
 
 
 def create_pipeline_task(db: Session, project_id: int, payload: dict) -> Task:
@@ -119,14 +135,68 @@ def run_pipeline_sync(
             _notify_pipeline(task.project_id, task, "render2d", "step_start")
 
             total_rooms = max(len(spec.rooms), 1)
+            last_poll_notify = 0.0
             for index, room in enumerate(spec.rooms):
+                start_progress = _render_progress(total_rooms, index, 0.0)
+                task = _update_task(
+                    db,
+                    task,
+                    progress=start_progress,
+                    step=1,
+                    step_label=f"渲染 {room.name}",
+                )
+                _notify_pipeline(
+                    task.project_id,
+                    task,
+                    "render2d",
+                    "room_start",
+                    {
+                        "room_id": room.id,
+                        "room_index": index,
+                        "room_total": total_rooms,
+                        "room_name": room.name,
+                    },
+                )
+
+                def make_poll_handler(
+                    room_index: int,
+                    room_name: str,
+                    room_id: str,
+                ) -> Callable[[float, float], None]:
+                    def on_poll(elapsed: float, timeout: float) -> None:
+                        nonlocal last_poll_notify, task
+                        now = time.time()
+                        if now - last_poll_notify < 3.0:
+                            return
+                        last_poll_notify = now
+                        ratio = min(0.95, elapsed / timeout) if timeout > 0 else 0.0
+                        task.progress = _render_progress(total_rooms, room_index, ratio)
+                        task.step_label = f"渲染 {room_name}"
+                        _notify_pipeline(
+                            task.project_id,
+                            task,
+                            "render2d",
+                            "room_poll",
+                            {
+                                "room_id": room_id,
+                                "room_index": room_index,
+                                "room_total": total_rooms,
+                                "room_name": room_name,
+                                "room_ratio": ratio,
+                            },
+                        )
+
+                    return on_poll
+
                 render_room(
                     task.project_id,
                     room,
+                    floorplan=floorplan,
                     comfy_client=comfy_client,
                     placeholder_png=placeholder_png,
+                    on_poll=make_poll_handler(index, room.name, room.id),
                 )
-                progress = 30 + ((index + 1) / total_rooms) * 40
+                progress = _render_progress(total_rooms, index + 1, 0.0)
                 task = _update_task(db, task, progress=progress, step=1, step_label=f"渲染 {room.name}")
                 _notify_pipeline(
                     task.project_id,

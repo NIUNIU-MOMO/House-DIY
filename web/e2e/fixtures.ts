@@ -8,6 +8,7 @@ export const mockProject = {
   status: 'delivered',
   created_at: '2026-01-01T00:00:00',
   updated_at: '2026-01-01T00:00:00',
+  cover_image_url: `/api/v1/projects/${PROJECT_ID}/renders/r1/image`,
 }
 
 export const mockFloorplan = {
@@ -59,6 +60,11 @@ export const mockScene = {
 export const mockHealth = {
   status: 'ok',
   services: { omlx: 'online', comfyui: 'online', vault: 'ready' },
+  service_details: {
+    omlx: { label: 'oMLX', web_url: 'http://127.0.0.1:8000/admin', external: true },
+    comfyui: { label: 'ComfyUI', web_url: 'http://127.0.0.1:8188', external: true },
+    vault: { label: 'Vault', web_url: '/knowledge', external: false },
+  },
 }
 
 export const mockKnowledgeDocuments = {
@@ -103,6 +109,18 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
 
   await page.route('**/api/v1/health', (route) =>
     route.fulfill({ json: mockHealth }),
+  )
+  await page.route('**/api/v1/health/logs/**', (route) =>
+    route.fulfill({
+      json: {
+        service: 'omlx',
+        lines: ['[mock] service running'],
+        offset: 100,
+        exists: true,
+        path: '/tmp/mock.log',
+        message: null,
+      },
+    }),
   )
   await page.route('**/api/v1/projects', (route) => {
     if (route.request().method() === 'GET') {

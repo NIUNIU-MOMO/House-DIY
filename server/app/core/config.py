@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     house_diy_omlx_vlm_model: str = "house-vlm"
     house_diy_omlx_embed_model: str = "house-embed"
     house_diy_comfyui_base_url: str = "http://127.0.0.1:8188"
+    house_diy_comfyui_render_timeout: float = 900.0
+    house_diy_comfyui_depth_strength: float = 0.65
+    house_diy_omlx_log_path: str = ""
+    house_diy_comfyui_log_path: str = "~/ComfyUI/comfyui.log"
+    house_diy_vault_log_path: str = ""
+    house_diy_api_log_path: str = ""
     house_diy_database_url: str = "sqlite:///./house_diy.db"
     house_diy_upload_dir: str = "./data/uploads"
     house_diy_output_dir: str = "./data/output"
@@ -28,6 +34,21 @@ class Settings(BaseSettings):
     def vault_templates_path(self) -> Path:
         repo_root = Path(__file__).resolve().parents[2]
         return repo_root.parent / "vault-templates"
+
+    def api_log_path(self) -> Path:
+        if self.house_diy_api_log_path:
+            return Path(self.house_diy_api_log_path).expanduser()
+        repo_root = Path(__file__).resolve().parents[2]
+        return repo_root.parent / ".run" / "api.log"
+
+    def omlx_admin_url(self) -> str:
+        base = self.house_diy_omlx_base_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        return f"{base}/admin"
+
+    def comfyui_web_url(self) -> str:
+        return self.house_diy_comfyui_base_url.rstrip("/")
 
 
 settings = Settings()

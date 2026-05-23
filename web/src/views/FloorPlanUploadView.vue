@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
-import { api } from '@/api/client'
+import ProjectStepBar from '@/components/ProjectStepBar.vue'
+import StepBackButton from '@/components/StepBackButton.vue'
+import { api, type FloorPlan } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,9 +15,14 @@ const projectName = ref('')
 const estimatedArea = ref('')
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref<string | null>(null)
+const existingFloorplan = ref<FloorPlan | null>(null)
 const uploading = ref(false)
 const error = ref<string | null>(null)
 const dragOver = ref(false)
+
+const hasExistingImage = computed(
+  () => Boolean(existingFloorplan.value?.source_url || existingFloorplan.value?.source_image),
+)
 
 const canSubmit = computed(() => Boolean(selectedFile.value) && !uploading.value)
 
@@ -63,6 +70,15 @@ async function loadProject() {
   if (project) {
     projectName.value = project.name
   }
+
+  try {
+    existingFloorplan.value = await api.getFloorplan(projectId.value)
+    if (existingFloorplan.value.estimated_area != null) {
+      estimatedArea.value = String(existingFloorplan.value.estimated_area)
+    }
+  } catch {
+    existingFloorplan.value = null
+  }
 }
 
 async function handleSubmit() {
@@ -85,6 +101,10 @@ async function handleSubmit() {
   }
 }
 
+function continueToParse() {
+  router.push({ name: 'floorplan-parse', params: { id: projectId.value } })
+}
+
 onMounted(loadProject)
 onBeforeUnmount(() => {
   if (previewUrl.value) {
@@ -97,19 +117,19 @@ onBeforeUnmount(() => {
   <div>
     <AppHeader active="projects" />
     <div class="ui-page narrow upload-page">
-      <div class="steps">
-        <span class="done">1 上传</span>
-        <span class="active">2 解析</span>
-        <span>3 校对</span>
-        <span>4 设计</span>
-      </div>
+      <ProjectStepBar :project-id="projectId" current="upload" />
 
       <h2>上传标准平面图</h2>
       <p class="muted">支持开发商户型图 PNG / PDF · 建议带尺寸标注</p>
 
+      <div v-if="hasExistingImage && !selectedFile" class="existing-banner">
+        <p>已上传户型图，可直接继续解析，或重新选择文件覆盖。</p>
+        <button type="button" class="btn primary sm" @click="continueToParse">继续解析 →</button>
+      </div>
+
       <div
         class="upload-zone"
-        :class="{ 'has-file': selectedFile, 'drag-over': dragOver }"
+        :class="{ 'has-file': selectedFile || hasExistingImage, 'drag-over': dragOver }"
         role="button"
         tabindex="0"
         @click="openFilePicker"
@@ -126,9 +146,18 @@ onBeforeUnmount(() => {
           @change="onFileChange"
         />
         <div class="upload-icon">↑</div>
-        <p>{{ selectedFile ? `已选 ${selectedFile.name}` : '拖拽文件到此处，或点击选择' }}</p>
+        <p v-if="selectedFile">已选 {{ selectedFile.name }}</p>
+        <p v-else-if="hasExistingImage">已上传 · 点击或拖拽可更换文件</p>
+        <p v-else>拖拽文件到此处，或点击选择</p>
         <p class="tiny muted">最大 20MB · 将调用 oMLX VLM 解析</p>
       </div>
+
+      <img
+        v-if="!previewUrl && existingFloorplan?.source_url"
+        :src="existingFloorplan.source_url"
+        alt="已上传户型"
+        class="existing-preview"
+      />
 
       <div class="form-row">
         <label for="project-name">项目名称</label>
@@ -162,7 +191,7 @@ onBeforeUnmount(() => {
           :disabled="!canSubmit"
           @click="handleSubmit"
         >
-          {{ uploading ? '上传中…' : '开始解析 →' }}
+          {{ uploading ? '上传中…' : '上传并开始解析 →' }}
         </button>
       </div>
     </div>
@@ -185,6 +214,28 @@ onBeforeUnmount(() => {
   color: #d48f8f;
   font-size: 0.85rem;
   margin-top: 0.75rem;
+}
+
+.existing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #2c4a3e;
+  color: #c8ead4;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.existing-preview {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  background: #eee;
 }
 
 .preview-thumb {

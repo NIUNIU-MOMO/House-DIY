@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
 import { api, type RenderRecord } from '@/api/client'
 
 const route = useRoute()
+const router = useRouter()
 const projectId = computed(() => Number(route.params.id))
 
 const renders = ref<RenderRecord[]>([])
@@ -61,7 +62,14 @@ onMounted(loadRenders)
     <div class="ui-page">
       <h2>2D 效果图画廊</h2>
       <div class="head-actions">
-        <button type="button" class="btn sm primary" @click="$router.push({ name: 'scene-viewer', params: { id: projectId } })">
+        <button
+          type="button"
+          class="btn sm ghost"
+          @click="router.push({ name: 'delivery-overview', params: { id: projectId } })"
+        >
+          ← 返回预览
+        </button>
+        <button type="button" class="btn sm primary" @click="router.push({ name: 'scene-viewer', params: { id: projectId } })">
           进入 3D 漫游 →
         </button>
       </div>
@@ -125,6 +133,9 @@ h2 {
 }
 
 .head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.75rem;
 }
 

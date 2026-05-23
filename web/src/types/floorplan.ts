@@ -32,6 +32,8 @@ export interface FloorPlanData {
   rooms: FloorRoom[]
   openings: FloorOpening[]
   source_url?: string | null
+  source_width?: number | null
+  source_height?: number | null
 }
 
 export function polygonCentroid(polygon: FloorPoint[]): FloorPoint {
@@ -46,6 +48,9 @@ export function polygonCentroid(polygon: FloorPoint[]): FloorPoint {
 }
 
 export function computeViewBox(floorplan: FloorPlanData, padding = 20): string {
+  if (floorplan.source_width && floorplan.source_height) {
+    return `${-padding} ${-padding} ${floorplan.source_width + padding * 2} ${floorplan.source_height + padding * 2}`
+  }
   const points: FloorPoint[] = []
   floorplan.walls.forEach((wall) => points.push(...wall.points))
   floorplan.rooms.forEach((room) => points.push(...room.polygon))

@@ -39,6 +39,7 @@ onMounted(async () => {
     <SceneViewer3D
       v-if="scene && activeRoomId"
       :gltf-url="scene.gltf_url"
+      :model-file="scene.gltf"
       :rooms="scene.rooms"
       :active-room-id="activeRoomId"
       @room-change="activeRoomId = $event"

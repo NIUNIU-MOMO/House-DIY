@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.project import Project
 from app.schemas.scene import ScenePackageRead
-from app.services.scene_builder import get_scene_gltf_path, load_scene_package
+from app.services.scene_builder import get_scene_asset_path, get_scene_gltf_path, load_scene_package
 
 router = APIRouter(prefix="/projects/{project_id}/scene", tags=["scene"])
 
@@ -40,4 +40,20 @@ def get_scene_gltf(project_id: int, db: Session = Depends(get_db)):
     path = get_scene_gltf_path(project_id)
     if path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene glTF not found")
-    return FileResponse(path, media_type="model/gltf+json")
+    media_type = "model/gltf-binary" if path.suffix.lower() == ".glb" else "model/gltf+json"
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@router.get("/assets/{filename}")
+def get_scene_asset(project_id: int, filename: str, db: Session = Depends(get_db)):
+    """旧版 glTF 外部 buffer（gltf_buffer_*.bin）"""
+    _get_project_or_404(project_id, db)
+    path = get_scene_asset_path(project_id, filename)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene asset not found")
+    media_type = "application/octet-stream"
+    if path.suffix.lower() == ".bin":
+        media_type = "application/octet-stream"
+    elif path.suffix.lower() == ".gltf":
+        media_type = "model/gltf+json"
+    return FileResponse(path, media_type=media_type, filename=path.name)

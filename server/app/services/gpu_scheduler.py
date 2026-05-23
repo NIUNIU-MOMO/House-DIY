@@ -2,7 +2,10 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.core.logging import get_logger
+
 JobCallable = Callable[[], Awaitable[Any]]
+logger = get_logger(__name__)
 
 
 class GpuScheduler:
@@ -27,7 +30,7 @@ class GpuScheduler:
                 try:
                     await job()
                 except Exception:
-                    pass
+                    logger.exception("GPU 队列任务失败")
             self._queue.task_done()
 
 

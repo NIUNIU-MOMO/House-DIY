@@ -3,9 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
+import ProjectStepBar from '@/components/ProjectStepBar.vue'
+import StepBackButton from '@/components/StepBackButton.vue'
 import { api, type Task } from '@/api/client'
 import { useTaskWebSocket } from '@/composables/useTaskWebSocket'
 import { PARSE_STEP_LABELS } from '@/types/task'
+import { resolveMaxCompletedStepIndex, stepIndex } from '@/utils/projectNavigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,6 +17,7 @@ const projectId = computed(() => Number(route.params.id))
 const task = ref<Task | null>(null)
 const error = ref<string | null>(null)
 const starting = ref(false)
+const parseCompleted = ref(false)
 
 const progress = computed(() => Math.round(task.value?.progress ?? 0))
 
@@ -66,6 +70,7 @@ async function pollTask(taskId: number) {
 async function startParse() {
   starting.value = true
   error.value = null
+  parseCompleted.value = false
   try {
     const created = await api.startFloorplanParse(projectId.value)
     task.value = created
@@ -77,45 +82,81 @@ async function startParse() {
   }
 }
 
-onMounted(startParse)
+onMounted(async () => {
+  const project = await api.getProject(projectId.value)
+  const maxIdx = await resolveMaxCompletedStepIndex(projectId.value, project)
+  if (maxIdx > stepIndex('parse')) {
+    parseCompleted.value = true
+    return
+  }
+
+  if (project.status === 'draft') {
+    try {
+      const floorplan = await api.getFloorplan(projectId.value)
+      if (!floorplan.source_url && !floorplan.source_image) {
+        router.replace({ name: 'floorplan-upload', params: { id: projectId.value } })
+        return
+      }
+    } catch {
+      router.replace({ name: 'floorplan-upload', params: { id: projectId.value } })
+      return
+    }
+  }
+
+  await startParse()
+})
 </script>
 
 <template>
   <div>
     <AppHeader active="projects" />
     <div class="ui-page narrow center parse-page">
-      <div class="steps">
-        <span class="done">1 上传</span>
-        <span class="active">2 解析</span>
-        <span>3 校对</span>
-        <span>4 设计</span>
-      </div>
+      <ProjectStepBar :project-id="projectId" current="parse" />
+      <StepBackButton :project-id="projectId" current="parse" />
 
       <div class="loader-card">
-        <div class="spinner" />
-        <h2>{{ task?.status === 'failed' ? '解析失败' : '正在解析户型…' }}</h2>
-        <p class="muted progress-text">{{ progress }}%</p>
+        <template v-if="parseCompleted">
+          <h2>解析已完成</h2>
+          <p class="muted">可前往「校对」查看结果，或重新解析覆盖当前数据</p>
+          <div class="revisit-actions">
+            <button
+              type="button"
+              class="btn primary"
+              @click="router.push({ name: 'floorplan-editor', params: { id: projectId } })"
+            >
+              前往校对 →
+            </button>
+            <button type="button" class="btn ghost" :disabled="starting" @click="startParse">
+              重新解析
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="spinner" />
+          <h2>{{ task?.status === 'failed' ? '解析失败' : '正在解析户型…' }}</h2>
+          <p class="muted progress-text">{{ progress }}%</p>
 
-        <ul class="task-list">
-          <li
-            v-for="(label, index) in PARSE_STEP_LABELS"
-            :key="label"
-            :class="stepClass(index)"
+          <ul class="task-list">
+            <li
+              v-for="(label, index) in PARSE_STEP_LABELS"
+              :key="label"
+              :class="stepClass(index)"
+            >
+              {{ stepIcon(index) }} {{ label }}
+            </li>
+          </ul>
+
+          <p v-if="error" class="error-text">{{ error }}</p>
+          <button
+            v-if="task?.status === 'failed'"
+            type="button"
+            class="btn primary"
+            :disabled="starting"
+            @click="startParse"
           >
-            {{ stepIcon(index) }} {{ label }}
-          </li>
-        </ul>
-
-        <p v-if="error" class="error-text">{{ error }}</p>
-        <button
-          v-if="task?.status === 'failed'"
-          type="button"
-          class="btn primary"
-          :disabled="starting"
-          @click="startParse"
-        >
-          重试解析
-        </button>
+            重试解析
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -184,5 +225,13 @@ onMounted(startParse)
   color: #d48f8f;
   margin: 1rem 0;
   font-size: 0.85rem;
+}
+
+.revisit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+  margin-top: 1rem;
 }
 </style>

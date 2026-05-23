@@ -31,6 +31,8 @@ export interface SceneRoomMeta {
 
 const props = defineProps<{
   gltfUrl: string
+  /** scene.json 中的文件名，用于区分 GLB 与旧版 glTF+bin */
+  modelFile?: string
   rooms: SceneRoomMeta[]
   activeRoomId: string
 }>()
@@ -90,7 +92,7 @@ async function loadScene() {
   const height = containerRef.value.clientHeight
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x1a1916)
+  scene.background = new THREE.Color(0x2a2824)
 
   camera = new THREE.PerspectiveCamera(70, width / height, 0.05, 100)
   camera.up.set(0, 0, 1)
@@ -101,14 +103,43 @@ async function loadScene() {
   containerRef.value.innerHTML = ''
   containerRef.value.appendChild(renderer.domElement)
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.65))
-  const sun = new THREE.DirectionalLight(0xfff2e0, 0.85)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75))
+  const sun = new THREE.DirectionalLight(0xfff2e0, 1.0)
   sun.position.set(4, 6, 8)
   scene.add(sun)
+  const fill = new THREE.DirectionalLight(0xc8d8ff, 0.35)
+  fill.position.set(-3, -2, 5)
+  scene.add(fill)
 
   const loader = new GLTFLoader()
+  const needsExternalAssets = (props.modelFile ?? '').endsWith('.gltf')
+  if (needsExternalAssets) {
+    const assetsBase = props.gltfUrl.replace(/\/gltf$/, '/assets/')
+    loader.setPath(assetsBase)
+  }
   try {
     const gltf = await loader.loadAsync(props.gltfUrl)
+    gltf.scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) {
+        return
+      }
+      child.castShadow = true
+      child.receiveShadow = true
+      const material = child.material
+      const materials = Array.isArray(material) ? material : [material]
+      for (const entry of materials) {
+        if (!entry) {
+          continue
+        }
+        if (child.geometry.attributes.color) {
+          entry.vertexColors = true
+        }
+        if (entry instanceof THREE.MeshStandardMaterial) {
+          entry.roughness = 0.85
+          entry.metalness = 0.05
+        }
+      }
+    })
     scene.add(gltf.scene)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'glTF 加载失败'

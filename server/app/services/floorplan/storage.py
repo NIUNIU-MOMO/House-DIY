@@ -81,6 +81,22 @@ def load_meta(project_id: int) -> dict | None:
     return json.loads(meta_path.read_text(encoding="utf-8"))
 
 
+def patch_meta(project_id: int, patch: dict) -> None:
+    """
+    合并更新项目 meta.json
+
+    @param project_id 项目 ID
+    @param patch 待合并字段
+    """
+    meta = load_meta(project_id) or {}
+    meta.update(patch)
+    project_dir = ensure_project_dir(project_id)
+    (project_dir / META_FILENAME).write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def load_floorplan(project_id: int) -> FloorPlanModel | None:
     floorplan_path = get_project_dir(project_id) / FLOORPLAN_FILENAME
     if not floorplan_path.is_file():
@@ -105,6 +121,28 @@ def get_source_path(project_id: int) -> Path | None:
         return None
     source_path = get_project_dir(project_id) / meta["source_image"]
     return source_path if source_path.is_file() else None
+
+
+def get_source_dimensions(project_id: int) -> tuple[int | None, int | None]:
+    """
+    读取源图宽高（像素）
+
+    @param project_id 项目 ID
+    @return (宽, 高)
+    """
+    source_path = get_source_path(project_id)
+    if source_path is None or source_path.suffix.lower() == ".pdf":
+        return None, None
+    try:
+        import cv2
+
+        image = cv2.imread(str(source_path))
+        if image is None:
+            return None, None
+        height, width = image.shape[:2]
+        return width, height
+    except Exception:
+        return None, None
 
 
 def has_floorplan(project_id: int) -> bool:

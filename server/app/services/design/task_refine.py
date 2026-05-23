@@ -56,7 +56,7 @@ def run_refine_apply_sync(task_id: int, placeholder_png: bytes | None = None) ->
                 room = next((item for item in spec.rooms if item.id == room_id), None)
                 if room is None:
                     continue
-                render_room(task.project_id, room, placeholder_png=placeholder_png)
+                render_room(task.project_id, room, floorplan=floorplan, placeholder_png=placeholder_png)
                 progress = 10 + ((index + 1) / total) * 60
                 task = _update_task(db, task, progress=progress, step_label=f"渲染 {room.name}")
                 _notify_task(task)

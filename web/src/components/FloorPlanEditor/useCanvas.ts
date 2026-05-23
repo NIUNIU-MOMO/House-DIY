@@ -101,6 +101,14 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     }
   }
 
+  function goBackToParse() {
+    router.push({ name: 'floorplan-parse', params: { id: projectId.value } })
+  }
+
+  function goBackToUpload() {
+    router.push({ name: 'floorplan-upload', params: { id: projectId.value } })
+  }
+
   return {
     floorplan,
     selectedRoomId,
@@ -117,5 +125,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     roomLabel,
     roomCenter,
     confirmFloorplan,
+    goBackToParse,
+    goBackToUpload,
   }
 }

@@ -205,8 +205,15 @@ select {
   background: linear-gradient(135deg, #2a2824, #3d3830);
 }
 
-.project-card .thumb.render {
-  background: linear-gradient(135deg, #2c4a3e, #1a1916);
+.project-card .thumb.has-cover {
+  background: #1a1916;
+}
+
+.project-card .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .card-body {
@@ -402,6 +409,22 @@ select {
   letter-spacing: 0.05em;
   color: var(--muted);
   margin-bottom: 0.5rem;
+}
+
+.editor-inspector .btn.ghost,
+.editor-tools .btn.ghost,
+.canvas-toolbar .btn.ghost {
+  background: #fff;
+  border-color: #8a8278;
+  color: #2c4a3e;
+}
+
+.editor-inspector .btn.ghost:hover,
+.editor-tools .btn.ghost:hover,
+.canvas-toolbar .btn.ghost:hover {
+  background: #f5f0e8;
+  border-color: #2c4a3e;
+  color: #1a2f28;
 }
 
 .tool {

@@ -35,12 +35,19 @@ def _to_read_model(project_id: int) -> FloorPlanRead:
     if source_image:
         source_url = f"/api/v1/projects/{project_id}/floorplan/source"
 
+    source_width = meta.get("source_width")
+    source_height = meta.get("source_height")
+    if not source_width or not source_height:
+        source_width, source_height = storage.get_source_dimensions(project_id)
+
     return FloorPlanRead(
         **model.model_dump(),
         source_image=source_image,
         original_filename=meta.get("original_filename"),
         estimated_area=meta.get("estimated_area"),
         source_url=source_url,
+        source_width=source_width,
+        source_height=source_height,
     )
 
 

@@ -5,6 +5,22 @@ export interface HealthResponse {
     comfyui: string
     vault: string
   }
+  service_details?: Record<string, ServiceDetail>
+}
+
+export interface ServiceDetail {
+  label: string
+  web_url: string
+  external: boolean
+}
+
+export interface ServiceLogChunk {
+  service: string
+  lines: string[]
+  offset: number
+  exists: boolean
+  path: string | null
+  message: string | null
 }
 
 export interface Project {
@@ -13,6 +29,7 @@ export interface Project {
   status: string
   created_at: string
   updated_at: string
+  cover_image_url?: string | null
 }
 
 export interface FloorPlan {
@@ -133,6 +150,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<HealthResponse>('/health'),
+  fetchServiceLogs: (service: string, offset = 0, tail = 200) =>
+    request<ServiceLogChunk>(
+      `/health/logs/${service}?offset=${offset}&tail=${tail}`,
+    ),
   listProjects: () => request<Project[]>('/projects'),
   createProject: (name: string) =>
     request<Project>('/projects', {

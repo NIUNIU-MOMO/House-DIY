@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
+import ProjectStepBar from '@/components/ProjectStepBar.vue'
+import StepBackButton from '@/components/StepBackButton.vue'
 import { api, type Project, type RenderRecord, type ScenePackage } from '@/api/client'
 
 const route = useRoute()
@@ -39,6 +41,8 @@ function renderCountForRoom(roomId: string) {
   <div>
     <AppHeader active="projects" />
     <div class="ui-page">
+      <ProjectStepBar :project-id="projectId" current="preview" />
+      <StepBackButton :project-id="projectId" current="preview" />
       <div class="page-head">
         <div>
           <h2>{{ project?.name ?? '项目' }} · 交付总览</h2>

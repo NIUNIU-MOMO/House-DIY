@@ -62,3 +62,14 @@ def get_render_path(project_id: int, room_id: str) -> Path | None:
         return None
     path = get_renders_dir(project_id) / match.filename
     return path if path.is_file() else None
+
+
+def resolve_cover_image_url(project_id: int) -> str | None:
+    """Pick the first available render image as project cover."""
+    manifest = load_manifest(project_id)
+    renders_dir = get_renders_dir(project_id)
+    for item in manifest.rooms:
+        path = renders_dir / item.filename
+        if path.is_file():
+            return f"/api/v1/projects/{project_id}/renders/{item.room_id}/image"
+    return None

@@ -60,6 +60,8 @@ class FloorPlanRead(FloorPlanModel):
     original_filename: str | None = None
     estimated_area: float | None = None
     source_url: str | None = None
+    source_width: int | None = None
+    source_height: int | None = None
 
 
 class ScaleRequest(BaseModel):

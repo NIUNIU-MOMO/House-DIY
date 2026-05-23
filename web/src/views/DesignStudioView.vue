@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
+import ProjectStepBar from '@/components/ProjectStepBar.vue'
+import StepBackButton from '@/components/StepBackButton.vue'
 import { api } from '@/api/client'
 
 const route = useRoute()
@@ -77,11 +79,8 @@ onMounted(loadRag)
     <AppHeader active="projects" />
     <div class="design-layout">
       <section class="design-main">
-        <div class="steps inline">
-          <span class="done">户型已确认</span>
-          <span class="active">描述需求</span>
-          <span>生成</span>
-        </div>
+        <ProjectStepBar :project-id="projectId" current="design" />
+        <StepBackButton :project-id="projectId" current="design" />
         <h2>描述你的理想之家</h2>
         <div v-if="existingSpec" class="spec-banner">
           已有 DesignSpec：{{ existingSpec.globalStyle }} · {{ existingSpec.rooms.length }} 个房间

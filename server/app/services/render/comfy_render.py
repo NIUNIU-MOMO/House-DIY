@@ -1,9 +1,24 @@
-import hashlib
-from pathlib import Path
+from collections.abc import Callable
 
+import hashlib
+
+from app.core.config import settings
 from app.schemas.design_spec import RoomDesignSpec
-from app.services.comfy_client import ComfyClient, build_room_render_workflow
-from app.services.render.storage import RenderRecord, upsert_render
+from app.schemas.floorplan import FloorPlanModel
+from app.services.comfy_client import (
+    ComfyClient,
+    WORKFLOW_DEPTH,
+    build_room_render_workflow,
+    resolve_render_workflow_name,
+)
+from app.services.render.room_depth_map import save_room_depth_map
+from app.services.render.storage import (
+    RenderRecord,
+    get_render_path,
+    get_renders_dir,
+    load_manifest,
+    upsert_render,
+)
 
 
 def extract_output_image(history_entry: dict) -> tuple[str, str]:
@@ -22,21 +37,49 @@ def extract_output_image(history_entry: dict) -> tuple[str, str]:
     raise ValueError("no output image in ComfyUI history")
 
 
+def _should_skip_existing(
+    project_id: int,
+    room: RoomDesignSpec,
+    skip_existing: bool,
+) -> bool:
+    if not skip_existing:
+        return False
+    workflow_name = resolve_render_workflow_name(room.render2d.controlnet)
+    manifest = load_manifest(project_id)
+    existing = next((item for item in manifest.rooms if item.room_id == room.id), None)
+    if existing is None or get_render_path(project_id, room.id) is None:
+        return False
+    return existing.workflow == workflow_name
+
+
 def render_room(
     project_id: int,
     room: RoomDesignSpec,
+    floorplan: FloorPlanModel | None = None,
     comfy_client: ComfyClient | None = None,
     placeholder_png: bytes | None = None,
+    on_poll: Callable[[float, float], None] | None = None,
+    skip_existing: bool = True,
 ) -> RenderRecord:
     """
     渲染单个房间效果图
 
     @param project_id 项目 ID
     @param room 房间 DesignSpec
+    @param floorplan 户型模型（layout_depth 控制图需要）
     @param comfy_client ComfyUI 客户端
     @param placeholder_png 测试占位图（跳过 ComfyUI）
+    @param on_poll ComfyUI 轮询回调 (elapsed_sec, timeout_sec)
+    @param skip_existing 已有同 workflow 渲染时跳过
     @return 渲染记录
     """
+    workflow_name = resolve_render_workflow_name(room.render2d.controlnet)
+    if _should_skip_existing(project_id, room, skip_existing) and placeholder_png is None:
+        manifest = load_manifest(project_id)
+        existing = next((item for item in manifest.rooms if item.room_id == room.id), None)
+        if existing is not None:
+            return existing
+
     filename = f"{room.id}.png"
     if placeholder_png is not None:
         record = RenderRecord(
@@ -45,7 +88,7 @@ def render_room(
             filename=filename,
             prompt=room.render2d.prompt,
             negative=room.render2d.negative,
-            workflow=room.render2d.workflow,
+            workflow=workflow_name,
         )
         upsert_render(project_id, record, placeholder_png)
         return record
@@ -53,9 +96,31 @@ def render_room(
     client = comfy_client or ComfyClient()
     seed = int(hashlib.md5(room.id.encode()).hexdigest()[:8], 16) % 999999
     prefix = f"house-diy/p{project_id}/{room.id}"
-    workflow = build_room_render_workflow(room.render2d.prompt, seed, prefix)
+
+    controlnet_image_name: str | None = None
+    if workflow_name == WORKFLOW_DEPTH:
+        if floorplan is None:
+            raise ValueError(f"floorplan required for layout_depth render of room {room.id}")
+        depth_path = get_renders_dir(project_id) / "depth" / f"{room.id}.png"
+        depth_bytes = save_room_depth_map(floorplan, room.id, depth_path, room_spec=room)
+        upload_name = f"house-diy-p{project_id}-{room.id}-depth.png"
+        controlnet_image_name = client.upload_image(depth_bytes, upload_name)
+
+    workflow = build_room_render_workflow(
+        room.render2d.prompt,
+        seed,
+        prefix,
+        workflow_name=workflow_name,
+        controlnet_image_name=controlnet_image_name,
+        controlnet_strength=settings.house_diy_comfyui_depth_strength,
+    )
     prompt_id = client.submit_prompt(workflow)
-    history_entry = client.wait_for_completion(prompt_id, poll_interval=1.0, timeout=120.0)
+    history_entry = client.wait_for_completion(
+        prompt_id,
+        poll_interval=2.0,
+        timeout=settings.house_diy_comfyui_render_timeout,
+        on_poll=on_poll,
+    )
     image_name, subfolder = extract_output_image(history_entry)
     image_bytes = client.download_image(image_name, subfolder=subfolder)
 
@@ -65,7 +130,7 @@ def render_room(
         filename=filename,
         prompt=room.render2d.prompt,
         negative=room.render2d.negative,
-        workflow=room.render2d.workflow,
+        workflow=workflow_name,
     )
     upsert_render(project_id, record, image_bytes)
     return record

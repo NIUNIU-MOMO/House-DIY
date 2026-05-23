@@ -103,10 +103,10 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByRole('heading', { name: '导入外部参考' })).toBeVisible()
   })
 
-  test('13 系统设置', async ({ page }) => {
+  test('13 系统监控', async ({ page }) => {
     await installCoreMocks(page)
     await page.goto('/settings')
-    await expect(page.getByRole('heading', { name: '系统状态与设置' })).toBeVisible()
-    await expect(page.getByText('omlx')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'oMLX' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '日志' }).first()).toBeVisible()
   })
 })

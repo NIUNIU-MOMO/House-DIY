@@ -66,6 +66,27 @@ def test_furniture_catalog_has_at_least_80_skus():
     assert item["glb_path"].endswith(".glb")
 
 
+def test_build_scene_fills_default_furniture_when_spec_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.floorplan.storage.settings.house_diy_projects_dir",
+        str(tmp_path),
+    )
+    spec_empty = DesignSpec.model_validate(
+        {
+            **DESIGN_SPEC_SAMPLE,
+            "rooms": [{**DESIGN_SPEC_SAMPLE["rooms"][0], "furniture": []}],
+        }
+    )
+    output_dir = tmp_path / "99"
+    package = build_scene(
+        FloorPlanModel.model_validate(FLOORPLAN_SAMPLE),
+        spec_empty,
+        output_dir,
+    )
+    assert len(package.rooms[0].furniture) >= 3
+    assert (output_dir / "scene.glb").stat().st_size > 4_000
+
+
 def test_build_scene_exports_gltf_and_json(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.services.floorplan.storage.settings.house_diy_projects_dir",
@@ -78,7 +99,7 @@ def test_build_scene_exports_gltf_and_json(tmp_path, monkeypatch):
 
     package = build_scene(floorplan, spec, output_dir)
 
-    assert (output_dir / "scene.gltf").is_file()
+    assert (output_dir / "scene.glb").is_file()
     assert (output_dir / "scene.json").is_file()
     assert package.status == "ready"
     assert len(package.rooms) == 1
@@ -113,4 +134,4 @@ async def test_scene_api(client, db_session, tmp_path, monkeypatch):
 
     gltf = await client.get(f"/api/v1/projects/{project_id}/scene/gltf")
     assert gltf.status_code == 200
-    assert b"asset" in gltf.content or b"meshes" in gltf.content
+    assert gltf.content[:4] == b"glTF"

@@ -32,6 +32,33 @@ def test_parse_vlm_response_from_markdown_fence():
     assert len(result.openings) == 1
 
 
+def test_merge_vlm_result_applies_crop_offset():
+    result = parse_vlm_response(
+        """
+        {
+          "rooms": [
+            {
+              "id": "r1",
+              "name": "客厅",
+              "polygon": [
+                {"x": 10, "y": 10},
+                {"x": 110, "y": 10},
+                {"x": 110, "y": 60},
+                {"x": 10, "y": 60}
+              ],
+              "area_label": "32.9"
+            }
+          ],
+          "openings": []
+        }
+        """
+    )
+    model = merge_vlm_result(result, coord_offset=(50.0, 80.0), image_size=(720, 540))
+    assert model.rooms[0].polygon[0].x == 60.0
+    assert model.rooms[0].polygon[0].y == 90.0
+    assert model.rooms[0].area == 32.9
+
+
 def test_merge_vlm_result_into_floorplan_draft():
     result = parse_vlm_response(VLM_SAMPLE)
     model = merge_vlm_result(result)
@@ -40,3 +67,63 @@ def test_merge_vlm_result_into_floorplan_draft():
     assert len(model.rooms) == 2
     assert len(model.walls) >= 4
     assert model.rooms[0].polygon[0].x == 0
+
+
+def test_parse_vlm_response_flat_polygon_strings():
+    result = parse_vlm_response(
+        """
+        {
+          "rooms": [
+            {
+              "id": "r1",
+              "name": "客厅",
+              "polygon": ["430", "410", "430", "780", "640", "780", "640", "410"]
+            }
+          ],
+          "openings": []
+        }
+        """
+    )
+    assert len(result.rooms) == 1
+    assert result.rooms[0].polygon[0].x == 430.0
+    assert result.rooms[0].polygon[0].y == 410.0
+    assert result.rooms[0].polygon[1].x == 430.0
+    assert result.rooms[0].polygon[1].y == 780.0
+
+
+def test_parse_vlm_response_flat_polygon_numbers():
+    result = parse_vlm_response(
+        """
+        {
+          "rooms": [
+            {
+              "id": "r1",
+              "name": "卧室",
+              "polygon": [10, 20, 110, 20, 110, 80, 10, 80]
+            }
+          ],
+          "openings": []
+        }
+        """
+    )
+    assert result.rooms[0].polygon[1].x == 110.0
+    assert result.rooms[0].polygon[1].y == 20.0
+
+
+def test_parse_vlm_response_polygon_coordinate_pairs():
+    result = parse_vlm_response(
+        """
+        {
+          "rooms": [
+            {
+              "id": "r1",
+              "name": "厨房",
+              "polygon": [[10, 20], [110, 20], [110, 80], [10, 80]]
+            }
+          ],
+          "openings": []
+        }
+        """
+    )
+    assert result.rooms[0].polygon[3].x == 10.0
+    assert result.rooms[0].polygon[3].y == 80.0

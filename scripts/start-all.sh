@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# House-DIY 一键启动：ComfyUI + FastAPI + Vue dev
+# House-DIY 一键启动：Redis + ComfyUI + FastAPI + Vue dev
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="${HOME}/House-DIY-env"
 COMFYUI_DIR="${HOME}/ComfyUI"
+COMFYUI_VENV="${COMFYUI_DIR}/venv"
+REDIS_CONTAINER="house-diy-redis"
 PID_DIR="${ROOT}/.run"
 mkdir -p "$PID_DIR"
 
@@ -39,6 +41,54 @@ start_if_free() {
   sleep 2
 }
 
+redis_ready() {
+  docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -q PONG
+}
+
+ensure_docker() {
+  if docker info >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v colima >/dev/null 2>&1; then
+    echo "[Redis] Docker 未就绪，尝试启动 Colima..."
+    colima start
+    sleep 2
+  fi
+  docker info >/dev/null 2>&1
+}
+
+ensure_redis() {
+  if redis_ready; then
+    echo "[Redis] 已在 6379 运行"
+    return 0
+  fi
+
+  if ! ensure_docker; then
+    echo "[Redis] Docker 不可用 — 请启动 Colima 或手动运行 $REDIS_CONTAINER"
+    return 0
+  fi
+
+  if docker container inspect "$REDIS_CONTAINER" >/dev/null 2>&1; then
+    echo "[Redis] 启动容器 $REDIS_CONTAINER..."
+    docker start "$REDIS_CONTAINER" >/dev/null
+  else
+    echo "[Redis] 创建并启动 $REDIS_CONTAINER (redis:7)..."
+    docker pull redis:7
+    docker run -d \
+      --name "$REDIS_CONTAINER" \
+      --restart unless-stopped \
+      -p 6379:6379 \
+      redis:7 >/dev/null
+  fi
+
+  sleep 1
+  if redis_ready; then
+    echo "[Redis] PONG"
+  else
+    echo "[Redis] 启动后 ping 失败 — 请检查: docker logs $REDIS_CONTAINER"
+  fi
+}
+
 echo "House-DIY start-all — $ROOT"
 echo "----------------------------------------"
 
@@ -49,11 +99,19 @@ else
   echo "[oMLX] 未检测到 8000 — 请先启动 oMLX App 或 brew services start omlx"
 fi
 
-# ComfyUI
+# Redis (Docker)
+ensure_redis
+
+# ComfyUI（独立 venv，见 docs/05 §5）
 if [[ -d "$COMFYUI_DIR" ]]; then
-  start_if_free "ComfyUI" 8188 \
-    "cd '$COMFYUI_DIR' && source '$VENV/bin/activate' && python main.py --listen 127.0.0.1 --port 8188" \
-    "$PID_DIR/comfyui.pid"
+  if [[ ! -x "${COMFYUI_VENV}/bin/python" ]]; then
+    echo "[ComfyUI] 虚拟环境未找到: ${COMFYUI_VENV}"
+    echo "          请先: cd ~/ComfyUI && python3.12 -m venv venv && pip install -r requirements.txt"
+  else
+    start_if_free "ComfyUI" 8188 \
+      "cd '$COMFYUI_DIR' && source '${COMFYUI_VENV}/bin/activate' && python main.py --listen 127.0.0.1 --port 8188" \
+      "$PID_DIR/comfyui.pid"
+  fi
 else
   echo "[ComfyUI] 目录不存在: $COMFYUI_DIR"
 fi
@@ -82,6 +140,7 @@ echo "  前端   http://127.0.0.1:5173"
 echo "  API    http://127.0.0.1:8080/api/v1/health"
 echo "  ComfyUI http://127.0.0.1:8188"
 echo "  oMLX   http://127.0.0.1:8000"
+echo "  Redis  redis://127.0.0.1:6379/0"
 echo ""
 echo "按 Ctrl+C 停止由本脚本启动的服务"
 echo "----------------------------------------"

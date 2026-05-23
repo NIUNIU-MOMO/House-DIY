@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.task import Task, TaskStatus, TaskType
 from app.services.design.storage import load_design_spec
+from app.services.floorplan import storage
 from app.services.floorplan.task_parse import _notify_task, _update_task
 from app.services.render.comfy_render import render_room
 from app.services.scheduler import TaskEvent, next_task_status
@@ -48,6 +49,12 @@ def run_room_render_sync(task_id: int, placeholder_png: bytes | None = None) -> 
             _notify_task(task)
             return
 
+        floorplan = storage.load_floorplan(task.project_id)
+        if floorplan is None:
+            _update_task(db, task, status=TaskStatus.FAILED, error="Floorplan not found")
+            _notify_task(task)
+            return
+
         task = _update_task(
             db,
             task,
@@ -60,7 +67,7 @@ def run_room_render_sync(task_id: int, placeholder_png: bytes | None = None) -> 
         _notify_task(task)
 
         try:
-            render_room(task.project_id, room, placeholder_png=placeholder_png)
+            render_room(task.project_id, room, floorplan=floorplan, placeholder_png=placeholder_png)
             task = _update_task(
                 db,
                 task,
