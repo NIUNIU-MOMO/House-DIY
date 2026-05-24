@@ -135,3 +135,57 @@ def test_build_validation_retry_hint_from_errors():
 def test_build_validation_retry_hint_returns_none_for_pass():
     validation = FloorPlanValidation(level="pass", issues=[])
     assert build_validation_retry_hint(validation) is None
+
+
+def test_load_step2_prompt_includes_seg_hint():
+    from app.services.floorplan.parser_vlm import load_step2_prompt_for_image
+    from app.services.floorplan.seg_hint import format_seg_hint_for_prompt
+
+    payload = [{"region_id": "seg1", "polygon": [{"x": 0, "y": 0}], "confidence": 0.9}]
+    hint = format_seg_hint_for_prompt(payload)
+    prompt = load_step2_prompt_for_image(
+        400,
+        300,
+        "cad_lineart",
+        [VlmRoomStub(id="r1", name="客厅")],
+        seg_hint=hint,
+    )
+    assert "seg1" in prompt
+    assert "预检测" in prompt
+
+
+def test_load_step2_prompt_without_seg_hint_unchanged():
+    from app.services.floorplan.parser_vlm import load_step2_prompt_for_image
+
+    base = load_step2_prompt_for_image(
+        400, 300, "cad_lineart", [VlmRoomStub(id="r1", name="客厅")]
+    )
+    with_hint_none = load_step2_prompt_for_image(
+        400, 300, "cad_lineart", [VlmRoomStub(id="r1", name="客厅")], seg_hint=None
+    )
+    assert base == with_hint_none
+
+
+def test_run_multistep_vlm_parse_passes_seg_hint_to_step2():
+    captured_prompts: list[str] = []
+
+    class CaptureClient:
+        def chat_vision(self, prompt, image_base64, mime_type="image/png", model=None, **kwargs):
+            captured_prompts.append(prompt)
+            if len(captured_prompts) == 1:
+                return STEP1_JSON
+            if len(captured_prompts) == 2:
+                return STEP2_BATCH1_JSON
+            return STEP2_BATCH2_JSON
+
+    run_multistep_vlm_parse(
+        CaptureClient(),
+        image_base64="abc",
+        mime_type="image/png",
+        img_w=400,
+        img_h=300,
+        plan_type="cad_lineart",
+        seg_hint='[{"region_id":"seg1"}]',
+    )
+    assert "预检测" not in captured_prompts[0]
+    assert any("seg1" in prompt for prompt in captured_prompts[1:])

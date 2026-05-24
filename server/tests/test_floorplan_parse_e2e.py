@@ -361,3 +361,58 @@ def test_validation_error_triggers_single_retry(data_dir, db_session, patched_ta
     assert client.index == 4
     assert model.validation is not None
     assert model.validation.level != "error"
+
+
+def test_parse_with_seg_hint_sets_parse_meta(data_dir, db_session, patched_task_session, monkeypatch):
+    from app.schemas.floorplan import Point
+    from app.services.floorplan.parser_seg import SegRoomRegion
+
+    sample = GOLDEN_SAMPLES[0]
+    _patch_classification(monkeypatch, sample)
+    monkeypatch.setattr("app.services.floorplan.task_parse.settings.house_diy_seg_enabled", True)
+    monkeypatch.setattr("app.services.floorplan.task_parse.settings.house_diy_seg_hint_enabled", True)
+
+    fake_regions = [
+        SegRoomRegion(
+            region_id="seg1",
+            polygon=[
+                Point(x=40, y=40),
+                Point(x=240, y=40),
+                Point(x=240, y=320),
+                Point(x=40, y=320),
+            ],
+            confidence=0.9,
+            source="morph",
+        )
+    ]
+    monkeypatch.setattr(
+        "app.services.floorplan.task_parse.extract_room_regions",
+        lambda _path: fake_regions,
+    )
+
+    project_id = _setup_project_with_sample(db_session, data_dir, sample)
+    task = create_floorplan_parse_task(db_session, project_id)
+    run_floorplan_parse_sync(task.id, omlx_client=GoldenMockOmlxClient(sample))
+
+    model = storage.load_floorplan(project_id)
+    assert model is not None
+    assert model.parse_meta is not None
+    assert model.parse_meta.seg_hint_used is True
+    assert model.parse_meta.seg_regions == 1
+
+
+def test_parse_with_seg_disabled_no_hint_meta(data_dir, db_session, patched_task_session, monkeypatch):
+    sample = GOLDEN_SAMPLES[0]
+    _patch_classification(monkeypatch, sample)
+    monkeypatch.setattr("app.services.floorplan.task_parse.settings.house_diy_seg_enabled", False)
+    monkeypatch.setattr("app.services.floorplan.task_parse.settings.house_diy_seg_hint_enabled", True)
+
+    project_id = _setup_project_with_sample(db_session, data_dir, sample)
+    task = create_floorplan_parse_task(db_session, project_id)
+    run_floorplan_parse_sync(task.id, omlx_client=GoldenMockOmlxClient(sample))
+
+    model = storage.load_floorplan(project_id)
+    assert model is not None
+    assert model.parse_meta is not None
+    assert model.parse_meta.seg_hint_used is None
+    assert model.parse_meta.seg_regions == 0 or model.parse_meta.seg_regions is None

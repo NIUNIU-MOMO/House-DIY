@@ -7,12 +7,15 @@ from datetime import datetime, timezone
 from shapely.geometry import Polygon
 
 from app.schemas.floorplan import FloorPlanModel, FloorPlanValidation, Point, Room, ValidationIssue
+from app.services.floorplan.parser_seg import SegRoomRegion
 from app.services.floorplan.plan_classifier import PlanType
 
 IOU_WARN_CAD = 0.15
 IOU_ERROR_CAD = 0.30
 IOU_WARN_MARKETING = 0.10
 IOU_ERROR_MARKETING = 0.25
+IOU_SEG_WARN_CAD = 0.12
+IOU_SEG_WARN_MARKETING = 0.08
 AREA_MISMATCH_RATIO = 0.30
 COORD_ROUND = 1
 
@@ -83,6 +86,54 @@ def _iou_thresholds(plan_type: PlanType | None) -> tuple[float, float]:
     if plan_type == "marketing_color":
         return IOU_WARN_MARKETING, IOU_ERROR_MARKETING
     return IOU_WARN_CAD, IOU_ERROR_CAD
+
+
+def _seg_iou_warn_threshold(plan_type: PlanType | None) -> float:
+    if plan_type == "marketing_color":
+        return IOU_SEG_WARN_MARKETING
+    return IOU_SEG_WARN_CAD
+
+
+def _detect_seg_vlm_mismatch(
+    rooms: list[Room],
+    seg_regions: list[SegRoomRegion],
+    plan_type: PlanType | None,
+) -> list[ValidationIssue]:
+    """
+    检测 VLM room polygon 与最近 seg 区域 IoU 过低
+
+    @param rooms VLM 识别的房间
+    @param seg_regions segmentation 区域
+    @param plan_type 图源类型，影响 IoU 阈值
+    @return SEG_VLM_MISMATCH warning 列表
+    """
+    if not rooms or not seg_regions:
+        return []
+
+    threshold = _seg_iou_warn_threshold(plan_type)
+    issues: list[ValidationIssue] = []
+    for room in rooms:
+        best_iou = 0.0
+        best_region_id = ""
+        for region in seg_regions:
+            iou = polygon_iou(room.polygon, region.polygon)
+            if iou > best_iou:
+                best_iou = iou
+                best_region_id = region.region_id
+        if best_iou >= threshold:
+            continue
+        issues.append(
+            ValidationIssue(
+                code="SEG_VLM_MISMATCH",
+                severity="warning",
+                message=(
+                    f"{room.name}({room.id}) 与 seg 区域 {best_region_id} "
+                    f"最大 IoU={best_iou:.2f} 低于阈值 {threshold:.2f}"
+                ),
+                room_ids=[room.id],
+            )
+        )
+    return issues
 
 
 def _detect_overlaps(rooms: list[Room], plan_type: PlanType | None) -> list[ValidationIssue]:
@@ -267,6 +318,7 @@ def validate_floorplan(
     plan_type: PlanType | None = None,
     *,
     low_resolution: bool = False,
+    seg_regions: list[SegRoomRegion] | None = None,
 ) -> FloorPlanValidation:
     """
     对 FloorPlanModel 执行质检
@@ -274,6 +326,7 @@ def validate_floorplan(
     @param model 户型模型
     @param plan_type 图源类型，影响重叠阈值
     @param low_resolution 源图是否低分辨率
+    @param seg_regions segmentation 区域（可选，用于 Seg/VLM 交叉校验）
     @return 质检结果
     """
     effective_plan_type = plan_type or model.plan_type
@@ -286,6 +339,8 @@ def validate_floorplan(
     issues.extend(_detect_all_rectangles(model.rooms))
     issues.extend(_detect_low_room_count(model.rooms))
     issues.extend(_detect_low_resolution(low_resolution))
+    if seg_regions is not None:
+        issues.extend(_detect_seg_vlm_mismatch(model.rooms, seg_regions, effective_plan_type))
 
     return FloorPlanValidation(
         level=_resolve_level(issues),

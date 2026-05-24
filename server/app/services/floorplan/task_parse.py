@@ -26,7 +26,8 @@ from app.services.floorplan.parser_vlm import (
 )
 from app.services.floorplan.plan_classifier import PlanType, classify_floorplan_image
 from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
-from app.services.floorplan.parser_seg import benchmark_seg_region_count, extract_room_regions
+from app.services.floorplan.parser_seg import extract_room_regions, seg_backend_label
+from app.services.floorplan.seg_hint import build_seg_hint_payload, format_seg_hint_for_prompt
 from app.services.omlx_client import OmlxClient, get_omlx_client
 
 PARSE_STEPS = [
@@ -192,6 +193,7 @@ def _run_vlm_pipeline(
     source_w: int,
     source_h: int,
     retry_hint: str | None = None,
+    seg_hint: str | None = None,
     vlm_model: str | None = None,
 ) -> tuple[Any, Any, int]:
     image = cv2.imread(structural_path)
@@ -207,6 +209,7 @@ def _run_vlm_pipeline(
         img_h=img_h,
         plan_type=plan_type,
         retry_hint=retry_hint,
+        seg_hint=seg_hint,
         vlm_model=vlm_model,
     )
     offset_x, offset_y = crop_offset
@@ -295,6 +298,15 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         vlm_model = settings.vlm_model_for_plan_type(plan_type)
         vlm_started = time.perf_counter()
 
+        seg_hint_used = False
+        seg_hint_text: str | None = None
+        extracted_seg_regions: list = []
+        if settings.seg_hint_active():
+            extracted_seg_regions = extract_room_regions(Path(structural_path))
+            payload = build_seg_hint_payload(extracted_seg_regions)
+            seg_hint_text = format_seg_hint_for_prompt(payload) or None
+            seg_hint_used = seg_hint_text is not None
+
         vlm_result, draft, vlm_calls = _run_vlm_pipeline(
             client,
             structural_path=structural_path,
@@ -302,6 +314,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             crop_offset=float_offset,
             source_w=source_w,
             source_h=source_h,
+            seg_hint=seg_hint_text,
             vlm_model=vlm_model,
         )
 
@@ -322,9 +335,10 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         seg_regions = 0
         seg_backend = "disabled"
         if settings.house_diy_seg_enabled:
-            regions = extract_room_regions(Path(structural_path))
-            seg_regions = len(regions)
-            _, seg_backend = benchmark_seg_region_count(structural_path)
+            if not extracted_seg_regions:
+                extracted_seg_regions = extract_room_regions(Path(structural_path))
+            seg_regions = len(extracted_seg_regions)
+            seg_backend = seg_backend_label()
 
         parse_meta = ParseMeta(
             vlm_model=vlm_model,
@@ -334,9 +348,16 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             wall_source="polygon",
             seg_regions=seg_regions,
             seg_backend=seg_backend,
+            seg_hint_used=seg_hint_used if settings.house_diy_seg_enabled else None,
         )
         low_res = bool(preprocess_meta.get("low_resolution"))
-        prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta, low_resolution=low_res)
+        seg_for_validate = extracted_seg_regions if settings.house_diy_seg_enabled else None
+        prepared = prepare_floorplan_for_save(
+            draft,
+            parse_meta=parse_meta,
+            low_resolution=low_res,
+            seg_regions=seg_for_validate,
+        )
         prepared = _append_cv_quality_info(prepared, wall_extract)
 
         retry_hint = build_validation_retry_hint(prepared.validation)
@@ -350,6 +371,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 source_w=source_w,
                 source_h=source_h,
                 retry_hint=retry_hint,
+                seg_hint=seg_hint_text,
                 vlm_model=vlm_model,
             )
             vlm_result = retry_result
@@ -365,6 +387,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 draft,
                 parse_meta=parse_meta,
                 low_resolution=low_res,
+                seg_regions=seg_for_validate,
             )
             prepared = _append_cv_quality_info(prepared, wall_extract)
 

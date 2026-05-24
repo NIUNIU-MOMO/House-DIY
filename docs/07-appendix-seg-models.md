@@ -20,6 +20,9 @@
 # 启用 segmentation（未配置 ONNX 时使用 OpenCV 形态学回退）
 HOUSE_DIY_SEG_ENABLED=true
 
+# 将 seg 区域作为 VLM Step2 几何 hint（依赖 SEG_ENABLED）
+HOUSE_DIY_SEG_HINT_ENABLED=true
+
 # 可选：ONNX 模型绝对路径（需自行下载/转换）
 HOUSE_DIY_SEG_MODEL_PATH=~/models/floorplan-room-seg.onnx
 ```
@@ -34,7 +37,8 @@ HOUSE_DIY_SEG_MODEL_PATH=~/models/floorplan-room-seg.onnx
 | 模块 | 说明 |
 |------|------|
 | `server/app/services/floorplan/parser_seg.py` | `extract_room_regions()`、`benchmark_seg_region_count()` |
-| `scripts/benchmark-floorplan-vlm.sh` | VLM + seg 对比表 |
+| `server/app/services/floorplan/seg_hint.py` | seg 区域简化与 Step2 prompt hint 序列化 |
+| `scripts/benchmark-floorplan-vlm.sh` | VLM + seg 对比表（`--seg-hint` 注入 hint） |
 
 ## 推荐模型选型（评估清单）
 
@@ -61,14 +65,22 @@ HOUSE_DIY_SEG_MODEL_PATH=~/models/floorplan-room-seg.onnx
 # 含 segmentation 统计
 ./scripts/benchmark-floorplan-vlm.sh --mock --seg
 
+# 含 seg hint 注入 Step2 + Seg/VLM 交叉校验
+./scripts/benchmark-floorplan-vlm.sh --mock --seg-hint
+
 # 真实 oMLX（需 house-vlm-pro 可用）
 ./scripts/benchmark-floorplan-vlm.sh --live
 ```
 
-输出列为 TSV：`sample`、`vlm_model`、`rooms`、`validation`、`seg`、`seg_backend` 等。
+输出列为 TSV：`sample`、`vlm_model`、`rooms`、`validation`、`seg`、`seg_backend`、`seg_hint` 等。
+
+## Seg Hint 与质检
+
+- **Step2 hint**：`seg_hint.py` 将 top-8 seg 区域（≤8 顶点）序列化注入 VLM Step2 prompt，提示模型以墙体线为准、忽略色块/家具。
+- **交叉校验**：`parser_validate` 新增 `SEG_VLM_MISMATCH`（warning），当 room 与最近 seg 区域 IoU 低于阈值时告警（cad 0.12 / marketing 0.08）。
+- **parse_meta**：`seg_hint_used`、`seg_match_warnings` 记录 hint 是否注入及不一致房间数。
+- **零回归**：`HOUSE_DIY_SEG_ENABLED=false` 或 `HOUSE_DIY_SEG_HINT_ENABLED=false` 时行为与 Phase 6 一致。
 
 ## 后续集成（非本期阻塞）
 
-- 将 seg polygon 作为 VLM Step2 的几何 hint 写入 prompt
-- 与 `parser_validate` IoU 联动，自动标记 seg/VLM 不一致房间
 - LoRA / 专用小模型（M4）长期边际提升

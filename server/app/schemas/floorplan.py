@@ -37,6 +37,8 @@ class ParseMeta(BaseModel):
     wall_source: Literal["cv", "polygon"] | None = None
     seg_regions: int | None = None
     seg_backend: str | None = None
+    seg_hint_used: bool | None = None
+    seg_match_warnings: int | None = None
 
 
 class Point(BaseModel):

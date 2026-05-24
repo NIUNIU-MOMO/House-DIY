@@ -121,3 +121,46 @@ def test_validate_low_resolution_warning():
     model = FloorPlanModel(rooms=[_room("r1", "客厅", 0, 0, 100, 100)])
     result = validate_floorplan(model, low_resolution=True)
     assert any(issue.code == "LOW_RESOLUTION" for issue in result.issues)
+
+
+def test_validate_seg_vlm_mismatch_warning():
+    from app.schemas.floorplan import Point
+    from app.services.floorplan.parser_seg import SegRoomRegion
+
+    room = _room("r1", "客厅", 0, 0, 50, 50)
+    seg = SegRoomRegion(
+        region_id="seg1",
+        polygon=[
+            Point(x=200, y=200),
+            Point(x=300, y=200),
+            Point(x=300, y=300),
+            Point(x=200, y=300),
+        ],
+        confidence=0.8,
+        source="morph",
+    )
+    result = validate_floorplan(FloorPlanModel(rooms=[room]), seg_regions=[seg])
+    mismatch = [issue for issue in result.issues if issue.code == "SEG_VLM_MISMATCH"]
+    assert mismatch
+    assert mismatch[0].severity == "warning"
+    assert not validation_blocks_confirm(result)
+
+
+def test_validate_skips_seg_mismatch_when_no_regions():
+    model = FloorPlanModel(rooms=[_room("r1", "客厅", 0, 0, 100, 100)])
+    result = validate_floorplan(model, seg_regions=None)
+    assert not any(issue.code == "SEG_VLM_MISMATCH" for issue in result.issues)
+
+
+def test_validate_seg_vlm_match_no_warning():
+    from app.services.floorplan.parser_seg import SegRoomRegion
+
+    room = _room("r1", "客厅", 0, 0, 100, 100)
+    seg = SegRoomRegion(
+        region_id="seg1",
+        polygon=room.polygon,
+        confidence=0.9,
+        source="morph",
+    )
+    result = validate_floorplan(FloorPlanModel(rooms=[room]), seg_regions=[seg])
+    assert not any(issue.code == "SEG_VLM_MISMATCH" for issue in result.issues)

@@ -156,6 +156,7 @@ def load_step2_prompt_for_image(
     plan_type: PlanType,
     room_batch: list[VlmRoomStub],
     retry_hint: str | None = None,
+    seg_hint: str | None = None,
 ) -> str:
     """
     分步解析 Step2：批次 polygon 提示词
@@ -165,6 +166,7 @@ def load_step2_prompt_for_image(
     @param plan_type 户型图源类型
     @param room_batch 本批待提取轮廓的房间
     @param retry_hint 质检失败后的修正提示
+    @param seg_hint segmentation 区域 hint 文本（可选）
     @return 完整提示词
     """
     room_spec = json.dumps(
@@ -178,6 +180,8 @@ def load_step2_prompt_for_image(
     )
     if retry_hint:
         prompt += f"\n修正要求：\n{retry_hint}\n"
+    if seg_hint:
+        prompt += f"\n{seg_hint}\n"
     return _append_image_size(prompt, width, height)
 
 
@@ -384,6 +388,7 @@ def run_multistep_vlm_parse(
     img_h: int,
     plan_type: PlanType,
     retry_hint: str | None = None,
+    seg_hint: str | None = None,
     vlm_model: str | None = None,
 ) -> tuple[VlmParseResult, int]:
     """
@@ -396,6 +401,7 @@ def run_multistep_vlm_parse(
     @param img_h 图片高
     @param plan_type 图源类型
     @param retry_hint 质检失败后的修正提示
+    @param seg_hint segmentation 区域 hint 文本（可选，仅 Step2）
     @param vlm_model oMLX VLM alias，None 时使用客户端默认
     @return (合并后的 VLM 解析结果, VLM 调用次数)
     """
@@ -414,7 +420,9 @@ def run_multistep_vlm_parse(
     polygon_rooms: list[VlmRoomPolygon] = []
     for batch in batch_room_stubs(room_list.rooms):
         step2_text = client.chat_vision(
-            load_step2_prompt_for_image(img_w, img_h, plan_type, batch, retry_hint),
+            load_step2_prompt_for_image(
+                img_w, img_h, plan_type, batch, retry_hint, seg_hint=seg_hint
+            ),
             image_base64,
             mime_type=mime_type,
             model=vlm_model,

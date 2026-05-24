@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     house_diy_omlx_vlm_model_marketing: str = ""
     house_diy_omlx_embed_model: str = "house-embed"
     house_diy_seg_enabled: bool = False
+    house_diy_seg_hint_enabled: bool = True
     house_diy_seg_model_path: str = ""
     house_diy_comfyui_base_url: str = "http://127.0.0.1:8188"
     house_diy_comfyui_render_timeout: float = 900.0
@@ -53,6 +54,14 @@ class Settings(BaseSettings):
 
     def comfyui_web_url(self) -> str:
         return self.house_diy_comfyui_base_url.rstrip("/")
+
+    def seg_hint_active(self) -> bool:
+        """
+        Seg hint 是否生效（需同时开启 seg 与 hint 开关）
+
+        @return True 表示应在 VLM Step2 注入 seg 区域 hint
+        """
+        return self.house_diy_seg_enabled and self.house_diy_seg_hint_enabled
 
     def vlm_model_for_plan_type(self, plan_type: str) -> str:
         """
