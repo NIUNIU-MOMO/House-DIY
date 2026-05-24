@@ -1,13 +1,16 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.services.floorplan.plan_classifier import PlanType
 
-from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus, Opening, OpeningType, Point, Room, Wall
+from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus, FloorPlanValidation, Opening, OpeningType, Point, Room, Wall
+
+POLYGON_BATCH_SIZE = 2
+PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
 
 
 class VlmPoint(BaseModel):
@@ -63,13 +66,56 @@ class VlmParseResult(BaseModel):
     openings: list[VlmOpening] = Field(default_factory=list)
 
 
+class VlmRoomStub(BaseModel):
+    id: str
+    name: str
+    area_label: str | None = None
+
+
+class VlmRoomListResult(BaseModel):
+    scale_hint: float | None = None
+    rooms: list[VlmRoomStub] = Field(default_factory=list)
+
+
+class VlmRoomPolygon(BaseModel):
+    id: str
+    polygon: Annotated[list[VlmPoint], Field(min_length=3)]
+
+
 def load_prompt(plan_type: PlanType = "cad_lineart") -> str:
-    prompts_dir = Path(__file__).resolve().parents[3] / "prompts"
     if plan_type == "marketing_color":
-        prompt_path = prompts_dir / "floorplan_vlm_marketing.txt"
+        prompt_path = PROMPTS_DIR / "floorplan_vlm_marketing.txt"
     else:
-        prompt_path = prompts_dir / "floorplan_vlm.txt"
+        prompt_path = PROMPTS_DIR / "floorplan_vlm.txt"
     return prompt_path.read_text(encoding="utf-8")
+
+
+def load_step1_prompt(plan_type: PlanType = "cad_lineart") -> str:
+    base = (PROMPTS_DIR / "floorplan_vlm_rooms.txt").read_text(encoding="utf-8")
+    if plan_type == "marketing_color":
+        base += (
+            "\n\n补充（彩色营销图）：跟墙体线走，不要跟地板颜色块走；"
+            "完全忽略中央水印/Logo/品牌字。"
+        )
+    return base
+
+
+def load_step2_prompt(plan_type: PlanType = "cad_lineart") -> str:
+    base = (PROMPTS_DIR / "floorplan_vlm_polygons.txt").read_text(encoding="utf-8")
+    if plan_type == "marketing_color":
+        base += (
+            "\n\n补充（彩色营销图）：polygon 必须贴墙体围合内侧，"
+            "不要跟色块填充或家具外轮廓走。"
+        )
+    return base
+
+
+def _append_image_size(prompt: str, width: int, height: int) -> str:
+    return (
+        f"{prompt}\n\n"
+        f"当前图片尺寸：宽 {width}px，高 {height}px。"
+        f"polygon 顶点 x∈[0,{width}]，y∈[0,{height}]。"
+    )
 
 
 def load_prompt_for_image(
@@ -85,11 +131,54 @@ def load_prompt_for_image(
     @param plan_type 户型图源类型
     @return 完整提示词
     """
-    return (
-        f"{load_prompt(plan_type)}\n\n"
-        f"当前图片尺寸：宽 {width}px，高 {height}px。"
-        f"polygon 顶点 x∈[0,{width}]，y∈[0,{height}]。"
+    return _append_image_size(load_prompt(plan_type), width, height)
+
+
+def load_step1_prompt_for_image(
+    width: int,
+    height: int,
+    plan_type: PlanType = "cad_lineart",
+) -> str:
+    """
+    分步解析 Step1：房间名单提示词
+
+    @param width 图片宽度（像素）
+    @param height 图片高度（像素）
+    @param plan_type 户型图源类型
+    @return 完整提示词
+    """
+    return _append_image_size(load_step1_prompt(plan_type), width, height)
+
+
+def load_step2_prompt_for_image(
+    width: int,
+    height: int,
+    plan_type: PlanType,
+    room_batch: list[VlmRoomStub],
+    retry_hint: str | None = None,
+) -> str:
+    """
+    分步解析 Step2：批次 polygon 提示词
+
+    @param width 图片宽度（像素）
+    @param height 图片高度（像素）
+    @param plan_type 户型图源类型
+    @param room_batch 本批待提取轮廓的房间
+    @param retry_hint 质检失败后的修正提示
+    @return 完整提示词
+    """
+    room_spec = json.dumps(
+        [{"id": room.id, "name": room.name, "area_label": room.area_label} for room in room_batch],
+        ensure_ascii=False,
+        indent=2,
     )
+    prompt = (
+        f"{load_step2_prompt(plan_type)}\n\n"
+        f"本次需要输出 polygon 的房间：\n{room_spec}\n"
+    )
+    if retry_hint:
+        prompt += f"\n修正要求：\n{retry_hint}\n"
+    return _append_image_size(prompt, width, height)
 
 
 def extract_json_payload(text: str) -> dict[str, Any]:
@@ -190,6 +279,146 @@ def parse_vlm_response(text: str) -> VlmParseResult:
     """
     payload = _normalize_vlm_payload(extract_json_payload(text))
     return VlmParseResult.model_validate(payload)
+
+
+def parse_vlm_room_list(text: str) -> VlmRoomListResult:
+    """
+    解析 Step1 房间名单 JSON
+
+    @param text VLM 原始输出
+    @return 房间名单
+    """
+    payload = extract_json_payload(text)
+    return VlmRoomListResult.model_validate(payload)
+
+
+def parse_vlm_polygon_batch(text: str) -> list[VlmRoomPolygon]:
+    """
+    解析 Step2 批次 polygon JSON
+
+    @param text VLM 原始输出
+    @return 本批房间 polygon 列表
+    """
+    payload = extract_json_payload(text)
+    rooms = payload.get("rooms")
+    if not isinstance(rooms, list):
+        return []
+
+    parsed: list[VlmRoomPolygon] = []
+    for room in rooms:
+        if not isinstance(room, dict):
+            continue
+        room_copy = dict(room)
+        normalized = _normalize_polygon(room_copy.get("polygon"))
+        if normalized is None:
+            continue
+        room_copy["polygon"] = normalized
+        parsed.append(VlmRoomPolygon.model_validate(room_copy))
+    return parsed
+
+
+def batch_room_stubs(
+    rooms: list[VlmRoomStub],
+    batch_size: int = POLYGON_BATCH_SIZE,
+) -> list[list[VlmRoomStub]]:
+    """
+    将房间名单按批切分
+
+    @param rooms 房间名单
+    @param batch_size 每批房间数
+    @return 分批后的房间列表
+    """
+    return [rooms[index : index + batch_size] for index in range(0, len(rooms), batch_size)]
+
+
+def merge_multistep_vlm(
+    room_list: VlmRoomListResult,
+    polygon_rooms: list[VlmRoomPolygon],
+) -> VlmParseResult:
+    """
+    合并 Step1 名单与 Step2 polygon 批次
+
+    @param room_list Step1 房间名单
+    @param polygon_rooms Step2 全部 polygon
+    @return 完整 VLM 解析结果
+    """
+    polygon_by_id = {room.id: room for room in polygon_rooms}
+    merged_rooms: list[VlmRoom] = []
+    for stub in room_list.rooms:
+        polygon_room = polygon_by_id.get(stub.id)
+        if polygon_room is None:
+            raise ValueError(f"VLM Step2 缺少房间 {stub.id} 的 polygon")
+        merged_rooms.append(
+            VlmRoom(
+                id=stub.id,
+                name=stub.name,
+                area_label=stub.area_label,
+                polygon=[VlmPoint(x=point.x, y=point.y) for point in polygon_room.polygon],
+            )
+        )
+    return VlmParseResult(scale_hint=room_list.scale_hint, rooms=merged_rooms, openings=[])
+
+
+def build_validation_retry_hint(validation: FloorPlanValidation | None) -> str | None:
+    """
+    根据质检结果生成 VLM 重试提示
+
+    @param validation 质检结果
+    @return 重试提示文本
+    """
+    if validation is None or validation.level != "error":
+        return None
+    error_messages = [issue.message for issue in validation.issues if issue.severity == "error"]
+    if not error_messages:
+        return None
+    lines = "\n".join(f"- {message}" for message in error_messages)
+    return f"上次解析质检失败，请修正以下问题：\n{lines}"
+
+
+def run_multistep_vlm_parse(
+    client: Any,
+    *,
+    image_base64: str,
+    mime_type: str,
+    img_w: int,
+    img_h: int,
+    plan_type: PlanType,
+    retry_hint: str | None = None,
+) -> tuple[VlmParseResult, int]:
+    """
+    分步 VLM 解析：Step1 房间名单 + Step2 分批 polygon
+
+    @param client oMLX 客户端
+    @param image_base64 图片 base64
+    @param mime_type 图片 MIME
+    @param img_w 图片宽
+    @param img_h 图片高
+    @param plan_type 图源类型
+    @param retry_hint 质检失败后的修正提示
+    @return (合并后的 VLM 解析结果, VLM 调用次数)
+    """
+    vlm_calls = 0
+    step1_text = client.chat_vision(
+        load_step1_prompt_for_image(img_w, img_h, plan_type),
+        image_base64,
+        mime_type=mime_type,
+    )
+    vlm_calls += 1
+    room_list = parse_vlm_room_list(step1_text)
+    if not room_list.rooms:
+        raise ValueError("VLM Step1 未识别到任何房间")
+
+    polygon_rooms: list[VlmRoomPolygon] = []
+    for batch in batch_room_stubs(room_list.rooms):
+        step2_text = client.chat_vision(
+            load_step2_prompt_for_image(img_w, img_h, plan_type, batch, retry_hint),
+            image_base64,
+            mime_type=mime_type,
+        )
+        vlm_calls += 1
+        polygon_rooms.extend(parse_vlm_polygon_batch(step2_text))
+
+    return merge_multistep_vlm(room_list, polygon_rooms), vlm_calls
 
 
 def apply_coord_offset(points: list[Point], offset_x: float, offset_y: float) -> list[Point]:

@@ -10,8 +10,9 @@ export interface Task {
 }
 
 export const PARSE_STEP_LABELS = [
-  '图像预处理与矫正',
-  'oMLX VLM 识别房间与门窗',
-  'OpenCV 提取墙线矢量',
-  '生成 FloorPlanModel 草稿',
+  '图像预处理与结构增强',
+  'VLM 识别房间列表',
+  'VLM 分批提取轮廓',
+  'OpenCV 评估墙线质量',
+  '生成草稿并质检',
 ]

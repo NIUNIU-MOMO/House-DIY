@@ -19,18 +19,18 @@ from app.services.floorplan.floorplan_service import prepare_floorplan_for_save
 from app.services.floorplan.parser_cv import extract_walls_with_meta
 from app.services.floorplan.parser_vlm import (
     apply_coord_offset,
-    load_prompt_for_image,
+    build_validation_retry_hint,
     merge_vlm_result,
-    parse_vlm_response,
+    run_multistep_vlm_parse,
 )
-from app.services.floorplan.plan_classifier import PlanType
+from app.services.floorplan.plan_classifier import PlanType, classify_floorplan_image
 from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
-from app.services.floorplan.plan_classifier import classify_floorplan_image
 from app.services.omlx_client import OmlxClient, get_omlx_client
 
 PARSE_STEPS = [
-    "图像预处理与矫正",
-    "oMLX VLM 识别房间与门窗",
+    "图像预处理与结构增强",
+    "VLM 识别房间列表",
+    "VLM 分批提取轮廓",
     "OpenCV 评估墙线质量",
     "生成草稿并质检",
 ]
@@ -181,6 +181,40 @@ def _append_cv_quality_info(prepared, wall_extract):
     )
 
 
+def _run_vlm_pipeline(
+    client: OmlxClient,
+    *,
+    structural_path: str,
+    plan_type: PlanType,
+    crop_offset: tuple[float, float],
+    source_w: int,
+    source_h: int,
+    retry_hint: str | None = None,
+) -> tuple[Any, Any, int]:
+    image = cv2.imread(structural_path)
+    img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
+    mime_type = mimetypes.guess_type(structural_path)[0] or "image/png"
+    image_base64 = base64.b64encode(Path(structural_path).read_bytes()).decode("ascii")
+
+    vlm_result, vlm_calls = run_multistep_vlm_parse(
+        client,
+        image_base64=image_base64,
+        mime_type=mime_type,
+        img_w=img_w,
+        img_h=img_h,
+        plan_type=plan_type,
+        retry_hint=retry_hint,
+    )
+    offset_x, offset_y = crop_offset
+    draft = merge_vlm_result(
+        vlm_result,
+        coord_offset=(offset_x, offset_y),
+        image_size=(source_w, source_h),
+    )
+    draft = draft.model_copy(update={"plan_type": plan_type})
+    return vlm_result, draft, vlm_calls
+
+
 def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None) -> None:
     client = omlx_client or get_omlx_client()
     db = SessionLocal()
@@ -237,48 +271,70 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             crop_offset = tuple(crop_offset)
         source_w = int(preprocess_meta.get("source_width") or 0)
         source_h = int(preprocess_meta.get("source_height") or 0)
-        _update_task(db, task, progress=20, step=0, step_label=PARSE_STEPS[0])
+        _update_task(db, task, progress=18, step=0, step_label=PARSE_STEPS[0])
         _notify_task(task)
 
-        _update_task(db, task, progress=30, step=1, step_label=PARSE_STEPS[1])
+        _update_task(db, task, progress=25, step=1, step_label=PARSE_STEPS[1])
         _notify_task(task)
 
-        image = cv2.imread(structural_path)
-        img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
+        float_offset = (
+            float(crop_offset[0]) if isinstance(crop_offset, tuple) else 0.0,
+            float(crop_offset[1]) if isinstance(crop_offset, tuple) else 0.0,
+        )
         if not source_w or not source_h:
-            source_w, source_h = img_w, img_h
-        mime_type = mimetypes.guess_type(structural_path)[0] or "image/png"
-        image_base64 = base64.b64encode(Path(structural_path).read_bytes()).decode("ascii")
-        vlm_text = client.chat_vision(
-            load_prompt_for_image(img_w, img_h, plan_type),
-            image_base64,
-            mime_type=mime_type,
-        )
-        vlm_result = parse_vlm_response(vlm_text)
-        offset_x, offset_y = crop_offset if isinstance(crop_offset, tuple) else (0.0, 0.0)
-        draft = merge_vlm_result(
-            vlm_result,
-            coord_offset=(float(offset_x), float(offset_y)),
-            image_size=(source_w, source_h),
-        )
-        draft = draft.model_copy(update={"plan_type": plan_type})
+            image = cv2.imread(structural_path)
+            if image is not None:
+                source_h, source_w = image.shape[:2]
 
-        _update_task(db, task, progress=60, step=2, step_label=PARSE_STEPS[2])
+        vlm_result, draft, vlm_calls = _run_vlm_pipeline(
+            client,
+            structural_path=structural_path,
+            plan_type=plan_type,
+            crop_offset=float_offset,
+            source_w=source_w,
+            source_h=source_h,
+        )
+
+        _update_task(db, task, progress=62, step=2, step_label=PARSE_STEPS[2])
+        _notify_task(task)
+
+        _update_task(db, task, progress=72, step=3, step_label=PARSE_STEPS[3])
         _notify_task(task)
 
         wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
-        wall_extract = _offset_wall_extract(wall_extract, float(offset_x), float(offset_y))
+        wall_extract = _offset_wall_extract(wall_extract, float_offset[0], float_offset[1])
 
-        _update_task(db, task, progress=85, step=3, step_label=PARSE_STEPS[3])
+        _update_task(db, task, progress=85, step=4, step_label=PARSE_STEPS[4])
         _notify_task(task)
 
         parse_meta = ParseMeta(
             vlm_model=settings.house_diy_omlx_vlm_model,
+            vlm_steps=vlm_calls,
             cv_wall_quality=wall_extract.quality,
             wall_source="polygon",
         )
         prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta)
         prepared = _append_cv_quality_info(prepared, wall_extract)
+
+        retry_hint = build_validation_retry_hint(prepared.validation)
+        if retry_hint is not None:
+            retry_result, retry_draft, retry_calls = _run_vlm_pipeline(
+                client,
+                structural_path=structural_path,
+                plan_type=plan_type,
+                crop_offset=float_offset,
+                source_w=source_w,
+                source_h=source_h,
+                retry_hint=retry_hint,
+            )
+            vlm_result = retry_result
+            draft = retry_draft
+            vlm_calls += retry_calls
+            wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
+            wall_extract = _offset_wall_extract(wall_extract, float_offset[0], float_offset[1])
+            parse_meta = parse_meta.model_copy(update={"vlm_steps": vlm_calls})
+            prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta)
+            prepared = _append_cv_quality_info(prepared, wall_extract)
 
         storage.save_floorplan(task.project_id, prepared)
         project.status = ProjectStatus.REVIEW
@@ -290,8 +346,8 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             task,
             status=TaskStatus.DONE,
             progress=100,
-            step=3,
-            step_label=PARSE_STEPS[3],
+            step=4,
+            step_label=PARSE_STEPS[4],
             error=None,
         )
         _notify_task(task)
