@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, toRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRef } from 'vue'
 
+import FloorPlanSvg from './FloorPlanSvg.vue'
 import { useFloorPlanCanvas } from './useCanvas'
 
 const props = defineProps<{
@@ -13,7 +14,6 @@ const {
   floorplan,
   selectedRoomId,
   selectedRoom,
-  viewBox,
   scaleText,
   loading,
   saving,
@@ -23,15 +23,40 @@ const {
   selectRoom,
   updateRoomName,
   roomLabel,
-  roomCenter,
   confirmFloorplan,
-  goBackToParse,
-  goBackToUpload,
 } = useFloorPlanCanvas(projectId)
 
-const wallStroke = computed(() => (floorplan.value?.walls.length ? 3 : 2))
+const previewOpen = ref(false)
+const previewMode = ref<'original' | 'annotated'>('annotated')
+const showUnderlay = ref(true)
 
-onMounted(load)
+const canPreview = computed(() => Boolean(floorplan.value?.source_url))
+
+function openPreview() {
+  if (canPreview.value) {
+    previewMode.value = 'annotated'
+    previewOpen.value = true
+  }
+}
+
+function closePreview() {
+  previewOpen.value = false
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && previewOpen.value) {
+    closePreview()
+  }
+}
+
+onMounted(() => {
+  void load()
+  window.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -47,6 +72,13 @@ onMounted(load)
       <hr />
       <h4>比例尺</h4>
       <p class="tiny muted">{{ scaleText }}</p>
+      <hr />
+      <h4>显示</h4>
+      <label class="underlay-toggle">
+        <input v-model="showUnderlay" type="checkbox" />
+        显示原图底图
+      </label>
+      <p class="tiny muted">关闭后仅看 AI 标注轮廓与名称</p>
       <hr />
       <h4>房间列表</h4>
       <ul class="room-list">
@@ -68,52 +100,75 @@ onMounted(load)
         </button>
         <span class="muted">状态 · {{ floorplan.status }}</span>
       </div>
-      <div class="floor-canvas">
-        <svg :viewBox="viewBox" class="floor-svg">
-          <image
-            v-if="floorplan.source_url && floorplan.source_width && floorplan.source_height"
-            :href="floorplan.source_url"
-            x="0"
-            y="0"
-            :width="floorplan.source_width"
-            :height="floorplan.source_height"
-            class="floor-underlay"
-            preserveAspectRatio="none"
+      <div
+        class="floor-canvas"
+        :class="{ zoomable: canPreview }"
+        :title="canPreview ? '点击查看大图' : undefined"
+        @click="openPreview"
+      >
+        <FloorPlanSvg
+          :floorplan="floorplan"
+          :selected-room-id="selectedRoomId"
+          :show-underlay="showUnderlay"
+          :underlay-opacity="0.35"
+        />
+        <span class="anno">
+          <template v-if="showUnderlay">底图为原图 · </template>
+          色块为 AI 识别房间 · 选中房间高亮 · 可改名称后确认
+          <template v-if="canPreview"> · 点击画布查看大图</template>
+        </span>
+      </div>
+    </div>
+
+    <div
+      v-if="previewOpen && floorplan.source_url"
+      class="image-preview-backdrop"
+      @click.self="closePreview"
+    >
+      <div class="image-preview-dialog" role="dialog" aria-modal="true" aria-label="户型大图">
+        <header class="image-preview-head">
+          <div class="preview-head-left">
+            <h3>{{ previewMode === 'original' ? '户型原图' : 'AI 标注图' }}</h3>
+            <div class="preview-tabs">
+              <button
+                type="button"
+                class="preview-tab"
+                :class="{ active: previewMode === 'original' }"
+                @click="previewMode = 'original'"
+              >
+                原图
+              </button>
+              <button
+                type="button"
+                class="preview-tab"
+                :class="{ active: previewMode === 'annotated' }"
+                @click="previewMode = 'annotated'"
+              >
+                标注图
+              </button>
+            </div>
+          </div>
+          <button type="button" class="icon-btn-close" aria-label="关闭" @click="closePreview">×</button>
+        </header>
+        <div class="image-preview-body">
+          <img
+            v-if="previewMode === 'original'"
+            :src="floorplan.source_url"
+            alt="户型原图"
+            class="image-preview-img"
           />
-          <rect
+          <FloorPlanSvg
             v-else
-            width="100%"
-            height="100%"
-            fill="#f8f4ee"
+            class="preview-svg"
+            :floorplan="floorplan"
+            :selected-room-id="selectedRoomId"
+            :show-underlay="false"
+            :label-scale="1.15"
           />
-          <g v-for="room in floorplan.rooms" :key="room.id">
-            <polygon
-              :points="room.polygon.map((p) => `${p.x},${p.y}`).join(' ')"
-              fill="rgba(44, 74, 62, 0.08)"
-              stroke="transparent"
-            />
-          </g>
-          <g v-for="wall in floorplan.walls" :key="wall.id">
-            <polyline
-              :points="wall.points.map((p) => `${p.x},${p.y}`).join(' ')"
-              fill="none"
-              stroke="#2c4a3e"
-              :stroke-width="wallStroke"
-            />
-          </g>
-          <g v-for="room in floorplan.rooms" :key="`${room.id}-label`">
-            <text
-              class="room-label"
-              :x="roomCenter(room).x"
-              :y="roomCenter(room).y"
-              text-anchor="middle"
-              dominant-baseline="middle"
-            >
-              {{ room.name }}
-            </text>
-          </g>
-        </svg>
-        <span class="anno">底图为原图 · 半透明区域为 AI 识别房间 · 可改名称后确认</span>
+        </div>
+        <footer v-if="previewMode === 'annotated'" class="image-preview-foot">
+          <span class="tiny muted">仅显示 AI 识别轮廓与房间名，不含原图文字</span>
+        </footer>
       </div>
     </div>
 
@@ -137,12 +192,6 @@ onMounted(load)
       </div>
       <p v-if="error" class="error-text">{{ error }}</p>
       <div class="inspector-actions">
-        <button type="button" class="btn ghost block" @click="goBackToParse">
-          ← 返回解析
-        </button>
-        <button type="button" class="btn ghost block subtle" @click="goBackToUpload">
-          重新上传户型
-        </button>
         <button
           type="button"
           class="btn primary block"
@@ -177,6 +226,15 @@ onMounted(load)
   cursor: not-allowed;
 }
 
+.underlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+}
+
 .btn.block {
   width: 100%;
 }
@@ -188,19 +246,117 @@ onMounted(load)
   margin-top: 1rem;
 }
 
-.btn.subtle {
-  font-size: 0.82rem;
-  opacity: 0.85;
-}
-
 .error-text {
   color: #d48f8f;
   font-size: 0.85rem;
   margin: 0.75rem 0;
 }
 
-.floor-underlay {
-  opacity: 0.5;
-  pointer-events: none;
+.floor-canvas.zoomable {
+  cursor: zoom-in;
+}
+
+.image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.image-preview-dialog {
+  width: min(1200px, 100%);
+  max-height: min(92vh, 960px);
+  background: #1e1c18;
+  border: 1px solid #444;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+}
+
+.image-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.preview-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.image-preview-head h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.preview-tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.preview-tab {
+  border: 1px solid #555;
+  background: transparent;
+  color: #bbb;
+  border-radius: 6px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.preview-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(201, 125, 58, 0.12);
+}
+
+.icon-btn-close {
+  border: none;
+  background: transparent;
+  color: #aaa;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.image-preview-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.image-preview-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.preview-svg {
+  max-width: 100%;
+}
+
+.preview-svg :deep(.floor-svg) {
+  max-width: none;
+  width: min(1100px, 100%);
+}
+
+.image-preview-foot {
+  padding: 0.55rem 1rem;
+  border-top: 1px solid #333;
 }
 </style>
