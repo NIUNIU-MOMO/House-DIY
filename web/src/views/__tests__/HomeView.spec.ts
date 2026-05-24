@@ -8,7 +8,7 @@ vi.mock('@/api/client', () => ({
   api: {
     health: vi.fn().mockResolvedValue({
       status: 'ok',
-      services: { omlx: 'online', comfyui: 'online', vault: 'ready' },
+      services: { omlx: 'online', comfyui: 'online', redis: 'online', vault: 'ready' },
     }),
     listProjects: vi.fn().mockResolvedValue([
       {

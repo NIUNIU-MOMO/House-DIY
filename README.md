@@ -10,7 +10,7 @@
 
 - Python 3.12 虚拟环境 `~/House-DIY-env`
 - Node.js 20+
-- oMLX（`:8000`，alias: `house-llm` / `house-vlm` / `house-embed`）
+- oMLX（`:8000`，alias: `house-llm` / `house-vlm-pro` / `house-embed`）
 - ComfyUI（`:8188`）
 - Redis Docker 容器 `house-diy-redis`
 - Obsidian Vault `~/House-DIY-Vault`

@@ -52,7 +52,7 @@ class OmlxClient:
         @param prompt 用户提示词
         @param image_base64 图片 base64 内容（不含 data: 前缀）
         @param mime_type 图片 MIME 类型
-        @param model 模型 alias，默认 house-vlm
+        @param model 模型 alias，默认 house-vlm-pro
         @return 助手回复文本
         """
         messages = [

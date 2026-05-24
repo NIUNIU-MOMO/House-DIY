@@ -123,12 +123,23 @@ export const mockScene = {
 
 export const mockHealth = {
   status: 'ok',
-  services: { omlx: 'online', comfyui: 'online', vault: 'ready' },
+  services: { omlx: 'online', comfyui: 'offline', redis: 'online', vault: 'ready' },
   service_details: {
-    omlx: { label: 'oMLX', web_url: 'http://127.0.0.1:8000/admin', external: true },
-    comfyui: { label: 'ComfyUI', web_url: 'http://127.0.0.1:8188', external: true },
-    vault: { label: 'Vault', web_url: '/knowledge', external: false },
+    omlx: { label: 'oMLX', web_url: 'http://127.0.0.1:8000/admin', external: true, restartable: false },
+    comfyui: { label: 'ComfyUI', web_url: 'http://127.0.0.1:8188', external: true, restartable: true },
+    redis: { label: 'Redis', web_url: '', external: false, restartable: true },
+    vault: { label: 'Vault', web_url: '/knowledge', external: false, restartable: true },
   },
+}
+
+export const mockOmlxModels = {
+  llm_model: 'house-llm',
+  vlm_model: 'house-vlm-pro',
+  vlm_model_cad: '',
+  vlm_model_marketing: '',
+  embed_model: 'house-embed',
+  available_models: ['house-llm', 'house-vlm', 'house-vlm-pro', 'house-embed'],
+  omlx_reachable: true,
 }
 
 export const mockKnowledgeDocuments = {
@@ -173,6 +184,22 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
 
   await page.route('**/api/v1/health', (route) =>
     route.fulfill({ json: mockHealth }),
+  )
+  await page.route('**/api/v1/health/omlx-models', (route) => {
+    if (route.request().method() === 'PUT') {
+      return route.fulfill({ json: mockOmlxModels })
+    }
+    return route.fulfill({ json: mockOmlxModels })
+  })
+  await page.route('**/api/v1/health/restart/**', (route) =>
+    route.fulfill({
+      json: {
+        service: 'comfyui',
+        success: true,
+        exit_code: 0,
+        output: '[ComfyUI] 重启完成',
+      },
+    }),
   )
   await page.route('**/api/v1/health/logs/**', (route) =>
     route.fulfill({

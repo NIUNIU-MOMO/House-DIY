@@ -12,7 +12,7 @@ describe('app store servicesStatusLevel', () => {
     const store = useAppStore()
     store.health = {
       status: 'ok',
-      services: { omlx: 'online', comfyui: 'online', vault: 'ready' },
+      services: { omlx: 'online', comfyui: 'online', redis: 'online', vault: 'ready' },
     }
 
     expect(store.servicesStatusLevel).toBe('ok')
@@ -22,7 +22,7 @@ describe('app store servicesStatusLevel', () => {
     const store = useAppStore()
     store.health = {
       status: 'ok',
-      services: { omlx: 'offline', comfyui: 'offline', vault: 'missing' },
+      services: { omlx: 'offline', comfyui: 'offline', redis: 'offline', vault: 'missing' },
     }
 
     expect(store.servicesStatusLevel).toBe('offline')
@@ -32,7 +32,7 @@ describe('app store servicesStatusLevel', () => {
     const store = useAppStore()
     store.health = {
       status: 'ok',
-      services: { omlx: 'online', comfyui: 'offline', vault: 'ready' },
+      services: { omlx: 'online', comfyui: 'offline', redis: 'online', vault: 'ready' },
     }
 
     expect(store.servicesStatusLevel).toBe('partial')

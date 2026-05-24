@@ -3,6 +3,7 @@ export interface HealthResponse {
   services: {
     omlx: string
     comfyui: string
+    redis: string
     vault: string
   }
   service_details?: Record<string, ServiceDetail>
@@ -12,6 +13,14 @@ export interface ServiceDetail {
   label: string
   web_url: string
   external: boolean
+  restartable?: boolean
+}
+
+export interface ServiceRestartResult {
+  service: string
+  success: boolean
+  exit_code: number
+  output: string
 }
 
 export interface ServiceLogChunk {
@@ -21,6 +30,19 @@ export interface ServiceLogChunk {
   exists: boolean
   path: string | null
   message: string | null
+}
+
+export interface OmlxModelConfig {
+  llm_model: string
+  vlm_model: string
+  vlm_model_cad: string
+  vlm_model_marketing: string
+  embed_model: string
+}
+
+export interface OmlxModelConfigResponse extends OmlxModelConfig {
+  available_models: string[]
+  omlx_reachable: boolean
 }
 
 export interface Project {
@@ -160,6 +182,14 @@ export const api = {
     request<ServiceLogChunk>(
       `/health/logs/${service}?offset=${offset}&tail=${tail}`,
     ),
+  getOmlxModels: () => request<OmlxModelConfigResponse>('/health/omlx-models'),
+  updateOmlxModels: (payload: OmlxModelConfig) =>
+    request<OmlxModelConfig>('/health/omlx-models', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  restartService: (service: string) =>
+    request<ServiceRestartResult>(`/health/restart/${service}`, { method: 'POST' }),
   listProjects: () => request<Project[]>('/projects'),
   createProject: (name: string) =>
     request<Project>('/projects', {

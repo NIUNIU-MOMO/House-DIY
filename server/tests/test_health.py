@@ -14,6 +14,7 @@ async def test_health_returns_ok_and_services():
     assert body["status"] == "ok"
     assert "omlx" in body["services"]
     assert "comfyui" in body["services"]
+    assert "redis" in body["services"]
     assert "service_details" in body
     assert body["service_details"]["omlx"]["web_url"].endswith("/admin")
 

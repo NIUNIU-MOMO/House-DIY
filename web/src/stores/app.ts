@@ -10,6 +10,7 @@ export const useAppStore = defineStore('app', () => {
 
   const omlxOnline = computed(() => health.value?.services.omlx === 'online')
   const comfyuiOnline = computed(() => health.value?.services.comfyui === 'online')
+  const redisOnline = computed(() => health.value?.services.redis === 'online')
   const vaultReady = computed(() => health.value?.services.vault === 'ready')
 
   function isServiceOk(name: string, value?: string): boolean {
@@ -26,7 +27,7 @@ export const useAppStore = defineStore('app', () => {
     }
 
     const services = health.value.services
-    const keys = ['omlx', 'comfyui', 'vault'] as const
+    const keys = ['omlx', 'comfyui', 'redis', 'vault'] as const
     const okCount = keys.filter((key) => isServiceOk(key, services[key])).length
 
     if (okCount === keys.length) {
@@ -41,7 +42,7 @@ export const useAppStore = defineStore('app', () => {
   const servicesStatusTitle = computed(() => {
     const level = servicesStatusLevel.value
     if ('ok' === level) {
-      return 'oMLX · ComfyUI · Vault 全部正常'
+      return 'oMLX · ComfyUI · Redis · Vault 全部正常'
     }
     if ('partial' === level) {
       return '部分服务异常，点击查看详情'
@@ -70,6 +71,7 @@ export const useAppStore = defineStore('app', () => {
     error,
     omlxOnline,
     comfyuiOnline,
+    redisOnline,
     vaultReady,
     isServiceOk,
     servicesStatusLevel,

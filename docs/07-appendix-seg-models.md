@@ -61,7 +61,7 @@ HOUSE_DIY_SEG_MODEL_PATH=~/models/floorplan-room-seg.onnx
 # 含 segmentation 统计
 ./scripts/benchmark-floorplan-vlm.sh --mock --seg
 
-# 真实 oMLX（需 house-vlm 可用）
+# 真实 oMLX（需 house-vlm-pro 可用）
 ./scripts/benchmark-floorplan-vlm.sh --live
 ```
 

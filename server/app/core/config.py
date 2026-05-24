@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     house_diy_omlx_base_url: str = "http://127.0.0.1:8000/v1"
     house_diy_omlx_api_key: str = ""
     house_diy_omlx_llm_model: str = "house-llm"
-    house_diy_omlx_vlm_model: str = "house-vlm"
+    house_diy_omlx_vlm_model: str = "house-vlm-pro"
     house_diy_omlx_vlm_model_cad: str = ""
     house_diy_omlx_vlm_model_marketing: str = ""
     house_diy_omlx_embed_model: str = "house-embed"
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     def vlm_model_for_plan_type(self, plan_type: str) -> str:
         """
-        按图源类型选择 VLM alias，未配置专用 alias 时回退默认 house-vlm
+        按图源类型选择 VLM alias，未配置专用 alias 时回退默认 house-vlm-pro
 
         @param plan_type 图源类型 cad_lineart / marketing_color / unknown
         @return oMLX VLM 模型 alias

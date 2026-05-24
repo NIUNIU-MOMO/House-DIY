@@ -2,7 +2,9 @@ from pathlib import Path
 
 from app.core.config import settings
 
-SERVICE_KEYS = ("omlx", "comfyui", "vault")
+from app.services.redis_probe import read_redis_docker_logs
+
+SERVICE_KEYS = ("omlx", "comfyui", "redis", "vault")
 
 OMLX_LOG_CANDIDATES = (
     "~/.omlx/logs/omlx.log",
@@ -65,6 +67,26 @@ def read_log_chunk(
     @param tail_lines 首次加载时的尾部行数
     @return 日志片段与新的 offset
     """
+    if service == "redis":
+        if not _redis_container_exists():
+            return {
+                "service": service,
+                "lines": [],
+                "offset": 0,
+                "exists": False,
+                "path": None,
+                "message": "Redis 容器未创建，请先启动 Redis",
+            }
+        lines = read_redis_docker_logs(tail_lines=tail_lines)
+        return {
+            "service": service,
+            "lines": lines,
+            "offset": len(lines),
+            "exists": True,
+            "path": f"docker logs {REDIS_CONTAINER}",
+            "message": None,
+        }
+
     path = resolve_log_path(service)
     if path is None:
         return {
@@ -113,6 +135,24 @@ def _decode_lines(data: bytes) -> list[str]:
 def _vault_log_match(line: str) -> bool:
     lowered = line.lower()
     return any(keyword in lowered for keyword in VAULT_LOG_KEYWORDS)
+
+
+REDIS_CONTAINER = "house-diy-redis"
+
+
+def _redis_container_exists() -> bool:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["docker", "container", "inspect", REDIS_CONTAINER],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _read_tail(path: Path, service: str, tail_lines: int, size: int) -> dict:
