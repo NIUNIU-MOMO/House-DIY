@@ -9,8 +9,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from app.services.floorplan.parser_pdf_vector import process_pdf_vector_page, vector_extract_to_meta
 
+logger = logging.getLogger(__name__)
 DEFAULT_PDF_DPI = 200
 MIN_SHORT_EDGE_PX = 800
 VECTOR_PATH_THRESHOLD = 12
@@ -142,7 +143,29 @@ def ensure_raster_source(
         "pdf_path_count": path_count,
         "pdf_image_count": image_count,
         "low_resolution": short_edge < MIN_SHORT_EDGE_PX,
+        "structure_source": "raster",
     }
+
+    if pdf_mode == "vector_rasterized":
+        fitz = _load_fitz()
+        doc = fitz.open(str(source_path))
+        try:
+            if doc.page_count > 1:
+                meta["pdf_multi_page_warning"] = True
+            page = doc[0]
+            scale = dpi / 72.0
+            extract = process_pdf_vector_page(
+                page,
+                source_path.parent,
+                width_px=width,
+                height_px=height,
+                scale=scale,
+            )
+            if extract is not None:
+                meta.update(vector_extract_to_meta(extract))
+        finally:
+            doc.close()
+
     logger.info(
         "PDF 栅格化完成 mode=%s size=%sx%s path=%s",
         pdf_mode,
@@ -168,15 +191,17 @@ def extract_pdf_for_floorplan(
     @return 提取结果
     """
     output_png = output_dir / "source.png"
-    pdf_mode, path_count, image_count = analyze_pdf_vector_content(pdf_path)
-    width, height = rasterize_pdf_first_page(pdf_path, output_png, dpi=dpi)
-    short_edge = min(width, height)
+    raster_path, meta = ensure_raster_source(pdf_path, raster_filename="source.png", dpi=dpi)
+    image = cv2.imread(str(raster_path))
+    width = image.shape[1] if image is not None else 0
+    height = image.shape[0] if image is not None else 0
+    short_edge = min(width, height) if width and height else 0
     return PdfExtractResult(
-        raster_path=output_png,
+        raster_path=raster_path,
         width=width,
         height=height,
-        pdf_mode=pdf_mode,
-        path_count=path_count,
-        image_count=image_count,
-        low_resolution=short_edge < MIN_SHORT_EDGE_PX,
+        pdf_mode=str(meta.get("pdf_mode") or "scan_rasterized"),
+        path_count=int(meta.get("pdf_path_count") or 0),
+        image_count=int(meta.get("pdf_image_count") or 0),
+        low_resolution=short_edge > 0 and short_edge < MIN_SHORT_EDGE_PX,
     )

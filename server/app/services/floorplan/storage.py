@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus
 from app.services.floorplan.plan_classifier import classify_floorplan_image
 from app.services.floorplan.parser_pdf import ensure_raster_source, is_pdf_path
+from app.services.floorplan.pdf_vector_types import VECTOR_STRUCTURAL_FILENAME
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf"}
 SOURCE_FILENAME = "source.png"
@@ -171,11 +172,26 @@ def get_structural_path(project_id: int) -> Path | None:
     @param project_id 项目 ID
     @return 结构图路径，不存在时返回 None
     """
+    return get_parse_structural_path(project_id)
+
+
+def get_parse_structural_path(project_id: int) -> Path | None:
+    """
+    解析任务使用的 structure 图（矢量 PDF 优先 vector structure）
+
+    @param project_id 项目 ID
+    @return 结构图路径，不存在时返回 None
+    """
     meta = load_meta(project_id)
     if meta is None:
         return None
+    project_dir = get_project_dir(project_id)
+    if meta.get("structure_source") == "vector":
+        vector_path = project_dir / meta.get("vector_structure_image", VECTOR_STRUCTURAL_FILENAME)
+        if vector_path.is_file():
+            return vector_path
     filename = meta.get("structural_image", STRUCTURAL_FILENAME)
-    structural_path = get_project_dir(project_id) / filename
+    structural_path = project_dir / filename
     return structural_path if structural_path.is_file() else None
 
 

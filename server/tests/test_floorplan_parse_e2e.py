@@ -416,3 +416,39 @@ def test_parse_with_seg_disabled_no_hint_meta(data_dir, db_session, patched_task
     assert model.parse_meta is not None
     assert model.parse_meta.seg_hint_used is None
     assert model.parse_meta.seg_regions == 0 or model.parse_meta.seg_regions is None
+
+
+def test_vector_pdf_parse_uses_vector_structure(data_dir, db_session, patched_task_session, monkeypatch):
+    fitz = pytest.importorskip("fitz")
+    from tests.test_parser_pdf_vector import create_vector_cad_pdf
+
+    sample = GOLDEN_SAMPLES[0]
+    _patch_classification(monkeypatch, sample)
+
+    project = Project(name="G-PDF-VECTOR", status=ProjectStatus.DRAFT)
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    project_id = project.id
+
+    pdf_path = data_dir / str(project_id) / "source.pdf"
+    pdf_path.parent.mkdir(parents=True)
+    create_vector_cad_pdf(pdf_path, with_labels=True)
+    storage.save_upload(project_id, pdf_path.read_bytes(), "plan.pdf")
+
+    meta = storage.load_meta(project_id)
+    assert meta is not None
+    if meta.get("pdf_mode") != "vector_rasterized":
+        pytest.skip("fixture PDF not classified as vector")
+
+    task = create_floorplan_parse_task(db_session, project_id)
+    run_floorplan_parse_sync(task.id, omlx_client=GoldenMockOmlxClient(sample))
+
+    meta = storage.load_meta(project_id)
+    assert meta.get("structure_source") == "vector"
+    vector_path = data_dir / str(project_id) / "source_vector_structure.png"
+    assert vector_path.is_file()
+
+    model = storage.load_floorplan(project_id)
+    assert model is not None
+    assert len(model.rooms) == sample.expected_rooms

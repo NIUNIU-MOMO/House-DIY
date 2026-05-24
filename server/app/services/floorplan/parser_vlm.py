@@ -138,6 +138,7 @@ def load_step1_prompt_for_image(
     width: int,
     height: int,
     plan_type: PlanType = "cad_lineart",
+    pdf_text_hint: str | None = None,
 ) -> str:
     """
     分步解析 Step1：房间名单提示词
@@ -145,9 +146,13 @@ def load_step1_prompt_for_image(
     @param width 图片宽度（像素）
     @param height 图片高度（像素）
     @param plan_type 户型图源类型
+    @param pdf_text_hint PDF 矢量文字弱 hint（可选）
     @return 完整提示词
     """
-    return _append_image_size(load_step1_prompt(plan_type), width, height)
+    prompt = _append_image_size(load_step1_prompt(plan_type), width, height)
+    if pdf_text_hint:
+        prompt += f"\n{pdf_text_hint}\n"
+    return prompt
 
 
 def load_step2_prompt_for_image(
@@ -389,6 +394,7 @@ def run_multistep_vlm_parse(
     plan_type: PlanType,
     retry_hint: str | None = None,
     seg_hint: str | None = None,
+    pdf_text_hint: str | None = None,
     vlm_model: str | None = None,
 ) -> tuple[VlmParseResult, int]:
     """
@@ -402,12 +408,13 @@ def run_multistep_vlm_parse(
     @param plan_type 图源类型
     @param retry_hint 质检失败后的修正提示
     @param seg_hint segmentation 区域 hint 文本（可选，仅 Step2）
+    @param pdf_text_hint PDF 矢量文字 hint（可选，仅 Step1）
     @param vlm_model oMLX VLM alias，None 时使用客户端默认
     @return (合并后的 VLM 解析结果, VLM 调用次数)
     """
     vlm_calls = 0
     step1_text = client.chat_vision(
-        load_step1_prompt_for_image(img_w, img_h, plan_type),
+        load_step1_prompt_for_image(img_w, img_h, plan_type, pdf_text_hint=pdf_text_hint),
         image_base64,
         mime_type=mime_type,
         model=vlm_model,

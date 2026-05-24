@@ -189,3 +189,37 @@ def test_run_multistep_vlm_parse_passes_seg_hint_to_step2():
     )
     assert "预检测" not in captured_prompts[0]
     assert any("seg1" in prompt for prompt in captured_prompts[1:])
+
+
+def test_load_step1_prompt_includes_pdf_text_hint():
+    from app.services.floorplan.parser_vlm import load_step1_prompt_for_image
+
+    hint = '以下文字来自 PDF 矢量层（仅供参考）：\n[{"name":"客厅"}]'
+    prompt = load_step1_prompt_for_image(400, 300, "cad_lineart", pdf_text_hint=hint)
+    assert "客厅" in prompt
+
+
+def test_run_multistep_vlm_parse_passes_pdf_text_hint_to_step1():
+    captured_prompts: list[str] = []
+
+    class CaptureClient:
+        def chat_vision(self, prompt, image_base64, mime_type="image/png", model=None, **kwargs):
+            captured_prompts.append(prompt)
+            if len(captured_prompts) == 1:
+                return STEP1_JSON
+            if len(captured_prompts) == 2:
+                return STEP2_BATCH1_JSON
+            return STEP2_BATCH2_JSON
+
+    pdf_hint = '[{"name":"客厅","area_label":"28.8"}]'
+    run_multistep_vlm_parse(
+        CaptureClient(),
+        image_base64="abc",
+        mime_type="image/png",
+        img_w=400,
+        img_h=300,
+        plan_type="cad_lineart",
+        pdf_text_hint=pdf_hint,
+    )
+    assert pdf_hint in captured_prompts[0]
+    assert pdf_hint not in captured_prompts[1]

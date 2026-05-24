@@ -71,3 +71,14 @@ def test_extract_pdf_for_floorplan(tmp_path: Path):
     result = extract_pdf_for_floorplan(pdf_path, tmp_path)
     assert result.raster_path.is_file()
     assert result.width > 0
+
+
+def test_ensure_raster_source_vector_pdf_writes_structure(tmp_path: Path):
+    pdf_path = tmp_path / "source.pdf"
+    _create_minimal_pdf(pdf_path)
+    raster_path, meta = ensure_raster_source(pdf_path)
+    assert raster_path.is_file()
+    if meta.get("pdf_mode") == "vector_rasterized":
+        assert meta.get("structure_source") == "vector"
+        assert (tmp_path / "source_vector_structure.png").is_file()
+        assert meta.get("pdf_wall_segments", 0) >= 4

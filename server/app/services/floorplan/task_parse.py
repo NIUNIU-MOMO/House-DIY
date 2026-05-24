@@ -28,6 +28,8 @@ from app.services.floorplan.plan_classifier import PlanType, classify_floorplan_
 from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
 from app.services.floorplan.parser_seg import extract_room_regions, seg_backend_label
 from app.services.floorplan.seg_hint import build_seg_hint_payload, format_seg_hint_for_prompt
+from app.services.floorplan.pdf_text_hint import build_pdf_text_hint
+from app.services.floorplan.pdf_vector_types import PdfTextBlock, VECTOR_STRUCTURAL_FILENAME
 from app.services.omlx_client import OmlxClient, get_omlx_client
 
 PARSE_STEPS = [
@@ -184,6 +186,51 @@ def _append_cv_quality_info(prepared, wall_extract):
     )
 
 
+def _pdf_text_hint_from_meta(meta: dict | None) -> str | None:
+    if not meta:
+        return None
+    raw_blocks = meta.get("pdf_text_blocks") or []
+    if not raw_blocks:
+        return None
+    blocks: list[PdfTextBlock] = []
+    for item in raw_blocks:
+        bbox_raw = item.get("bbox") or []
+        if len(bbox_raw) < 4:
+            continue
+        blocks.append(
+            PdfTextBlock(
+                text=str(item.get("text") or ""),
+                bbox=(float(bbox_raw[0]), float(bbox_raw[1]), float(bbox_raw[2]), float(bbox_raw[3])),
+            )
+        )
+    return build_pdf_text_hint(blocks)
+
+
+def _vector_preprocess_meta(
+    vector_path: Path,
+    *,
+    raster_meta: dict | None = None,
+) -> dict[str, Any]:
+    image = cv2.imread(str(vector_path))
+    source_h, source_w = (image.shape[:2] if image is not None else (0, 0))
+    meta: dict[str, Any] = {
+        "source_width": source_w,
+        "source_height": source_h,
+        "crop_offset": [0, 0],
+        "structural_image": VECTOR_STRUCTURAL_FILENAME,
+        "structure_source": "vector",
+        "watermark_inpainted": False,
+        "dimension_trimmed": False,
+        "low_resolution": False,
+    }
+    if raster_meta:
+        meta["low_resolution"] = bool(raster_meta.get("low_resolution"))
+        for key in ("pdf_mode", "pdf_path_count", "pdf_wall_segments", "pdf_text_blocks", "pdf_multi_page_warning"):
+            if key in raster_meta:
+                meta[key] = raster_meta[key]
+    return meta
+
+
 def _run_vlm_pipeline(
     client: OmlxClient,
     *,
@@ -194,6 +241,7 @@ def _run_vlm_pipeline(
     source_h: int,
     retry_hint: str | None = None,
     seg_hint: str | None = None,
+    pdf_text_hint: str | None = None,
     vlm_model: str | None = None,
 ) -> tuple[Any, Any, int]:
     image = cv2.imread(structural_path)
@@ -210,6 +258,7 @@ def _run_vlm_pipeline(
         plan_type=plan_type,
         retry_hint=retry_hint,
         seg_hint=seg_hint,
+        pdf_text_hint=pdf_text_hint,
         vlm_model=vlm_model,
     )
     offset_x, offset_y = crop_offset
@@ -269,12 +318,21 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         )
         plan_type = classification.plan_type
 
-        structural_path, preprocess_meta = preprocess_image(
-            str(raster_path),
-            plan_type=plan_type,
-            has_watermark=classification.has_watermark,
-        )
-        storage.patch_meta(task.project_id, preprocess_meta)
+        project_meta = storage.load_meta(task.project_id) or {}
+        vector_structural = storage.get_parse_structural_path(task.project_id)
+        pdf_text_hint = _pdf_text_hint_from_meta(project_meta)
+
+        if project_meta.get("structure_source") == "vector" and vector_structural is not None:
+            structural_path = str(vector_structural)
+            preprocess_meta = _vector_preprocess_meta(vector_structural, raster_meta=raster_meta)
+            storage.patch_meta(task.project_id, preprocess_meta)
+        else:
+            structural_path, preprocess_meta = preprocess_image(
+                str(raster_path),
+                plan_type=plan_type,
+                has_watermark=classification.has_watermark,
+            )
+            storage.patch_meta(task.project_id, preprocess_meta)
         crop_offset = preprocess_meta.get("crop_offset", (0, 0))
         if isinstance(crop_offset, list):
             crop_offset = tuple(crop_offset)
@@ -315,6 +373,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             source_w=source_w,
             source_h=source_h,
             seg_hint=seg_hint_text,
+            pdf_text_hint=pdf_text_hint,
             vlm_model=vlm_model,
         )
 
@@ -372,6 +431,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 source_h=source_h,
                 retry_hint=retry_hint,
                 seg_hint=seg_hint_text,
+                pdf_text_hint=pdf_text_hint,
                 vlm_model=vlm_model,
             )
             vlm_result = retry_result
