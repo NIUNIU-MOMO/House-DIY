@@ -23,6 +23,7 @@ from app.services.floorplan.parser_vlm import (
     merge_vlm_result,
     parse_vlm_response,
 )
+from app.services.floorplan.plan_classifier import PlanType
 from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
 from app.services.floorplan.plan_classifier import classify_floorplan_image
 from app.services.omlx_client import OmlxClient, get_omlx_client
@@ -114,8 +115,17 @@ def create_floorplan_parse_task(db: Session, project_id: int) -> Task:
     return task
 
 
-def preprocess_image(source_path: str) -> tuple[str, dict]:
-    return preprocess_floorplan_image(source_path)
+def preprocess_image(
+    source_path: str,
+    *,
+    plan_type: PlanType = "unknown",
+    has_watermark: bool = False,
+) -> tuple[str, dict]:
+    return preprocess_floorplan_image(
+        source_path,
+        plan_type=plan_type,
+        has_watermark=has_watermark,
+    )
 
 
 def _offset_walls(walls, offset_x: float, offset_y: float):
@@ -216,7 +226,11 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         )
         plan_type = classification.plan_type
 
-        processed_path, preprocess_meta = preprocess_image(str(source_path))
+        structural_path, preprocess_meta = preprocess_image(
+            str(source_path),
+            plan_type=plan_type,
+            has_watermark=classification.has_watermark,
+        )
         storage.patch_meta(task.project_id, preprocess_meta)
         crop_offset = preprocess_meta.get("crop_offset", (0, 0))
         if isinstance(crop_offset, list):
@@ -229,12 +243,12 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         _update_task(db, task, progress=30, step=1, step_label=PARSE_STEPS[1])
         _notify_task(task)
 
-        image = cv2.imread(processed_path)
+        image = cv2.imread(structural_path)
         img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
         if not source_w or not source_h:
             source_w, source_h = img_w, img_h
-        mime_type = mimetypes.guess_type(processed_path)[0] or "image/png"
-        image_base64 = base64.b64encode(Path(processed_path).read_bytes()).decode("ascii")
+        mime_type = mimetypes.guess_type(structural_path)[0] or "image/png"
+        image_base64 = base64.b64encode(Path(structural_path).read_bytes()).decode("ascii")
         vlm_text = client.chat_vision(
             load_prompt_for_image(img_w, img_h, plan_type),
             image_base64,
@@ -252,7 +266,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         _update_task(db, task, progress=60, step=2, step_label=PARSE_STEPS[2])
         _notify_task(task)
 
-        wall_extract = extract_walls_with_meta(Path(processed_path), vlm_result)
+        wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
         wall_extract = _offset_wall_extract(wall_extract, float(offset_x), float(offset_y))
 
         _update_task(db, task, progress=85, step=3, step_label=PARSE_STEPS[3])

@@ -8,6 +8,7 @@ from app.services.floorplan.plan_classifier import classify_floorplan_image
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf"}
 SOURCE_FILENAME = "source.png"
+STRUCTURAL_FILENAME = "source_structural.png"
 FLOORPLAN_FILENAME = "floorplan.json"
 META_FILENAME = "meta.json"
 
@@ -128,6 +129,21 @@ def get_source_path(project_id: int) -> Path | None:
         return None
     source_path = get_project_dir(project_id) / meta["source_image"]
     return source_path if source_path.is_file() else None
+
+
+def get_structural_path(project_id: int) -> Path | None:
+    """
+    读取供 VLM 解析的结构图路径
+
+    @param project_id 项目 ID
+    @return 结构图路径，不存在时返回 None
+    """
+    meta = load_meta(project_id)
+    if meta is None:
+        return None
+    filename = meta.get("structural_image", STRUCTURAL_FILENAME)
+    structural_path = get_project_dir(project_id) / filename
+    return structural_path if structural_path.is_file() else None
 
 
 def get_source_dimensions(project_id: int) -> tuple[int | None, int | None]:
