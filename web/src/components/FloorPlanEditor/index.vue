@@ -14,6 +14,10 @@ const {
   floorplan,
   selectedRoomId,
   selectedRoom,
+  editorMode,
+  scaleDistanceM,
+  scaleMarkers,
+  canApplyScale,
   scaleText,
   loading,
   saving,
@@ -21,7 +25,12 @@ const {
   load,
   save,
   selectRoom,
+  setEditorMode,
+  addScalePoint,
+  resetScalePoints,
+  applyScale,
   updateRoomName,
+  updateRoomVertex,
   roomLabel,
   confirmFloorplan,
   validationLevel,
@@ -37,7 +46,7 @@ const showUnderlay = ref(true)
 const canPreview = computed(() => Boolean(floorplan.value?.source_url))
 
 function openPreview() {
-  if (canPreview.value) {
+  if (canPreview.value && editorMode.value === 'select') {
     previewMode.value = 'annotated'
     previewOpen.value = true
   }
@@ -82,13 +91,57 @@ onUnmounted(() => {
     <div class="editor-layout">
     <aside class="editor-tools">
       <h4>工具</h4>
-      <button type="button" class="tool active">选择</button>
+      <button
+        type="button"
+        class="tool"
+        :class="{ active: editorMode === 'select' }"
+        data-testid="tool-select"
+        @click="setEditorMode('select')"
+      >
+        选择
+      </button>
+      <button
+        type="button"
+        class="tool"
+        :class="{ active: editorMode === 'scale' }"
+        data-testid="tool-scale"
+        @click="setEditorMode('scale')"
+      >
+        标定比例尺
+      </button>
       <button type="button" class="tool" disabled>墙线</button>
       <button type="button" class="tool" disabled>门洞</button>
       <button type="button" class="tool" disabled>窗户</button>
       <hr />
       <h4>比例尺</h4>
       <p class="tiny muted">{{ scaleText }}</p>
+      <div v-if="editorMode === 'scale'" class="scale-panel">
+        <p class="tiny muted">在画布上依次点击两点（A → B）</p>
+        <label class="scale-field">
+          实际距离（米）
+          <input
+            v-model="scaleDistanceM"
+            class="input light"
+            type="number"
+            min="0.1"
+            step="0.1"
+            placeholder="例如 3.6"
+            data-testid="scale-distance-input"
+          />
+        </label>
+        <div class="scale-actions">
+          <button
+            type="button"
+            class="btn sm primary"
+            :disabled="!canApplyScale || saving"
+            data-testid="apply-scale-btn"
+            @click="applyScale"
+          >
+            应用比例尺
+          </button>
+          <button type="button" class="btn sm ghost" @click="resetScalePoints">重置选点</button>
+        </div>
+      </div>
       <hr />
       <h4>显示</h4>
       <label class="underlay-toggle">
@@ -119,20 +172,30 @@ onUnmounted(() => {
       </div>
       <div
         class="floor-canvas"
-        :class="{ zoomable: canPreview }"
-        :title="canPreview ? '点击查看大图' : undefined"
+        :class="{ zoomable: canPreview && editorMode === 'select' }"
+        :title="canPreview && editorMode === 'select' ? '点击查看大图' : undefined"
         @click="openPreview"
       >
         <FloorPlanSvg
+          editable
           :floorplan="floorplan"
           :selected-room-id="selectedRoomId"
           :show-underlay="showUnderlay"
           :underlay-opacity="0.35"
+          :editor-mode="editorMode"
+          :scale-markers="scaleMarkers"
+          @canvas-click="addScalePoint"
+          @room-select="selectRoom"
+          @vertex-move="({ roomId, vertexIndex, point }) => updateRoomVertex(roomId, vertexIndex, point)"
+          @click.stop
         />
         <span class="anno">
-          <template v-if="showUnderlay">底图为原图 · </template>
-          色块为 AI 识别房间 · 选中房间高亮 · 可改名称后确认
-          <template v-if="canPreview"> · 点击画布查看大图</template>
+          <template v-if="editorMode === 'scale'">比例尺模式：点击画布选两点，输入实际距离后应用</template>
+          <template v-else>
+            <template v-if="showUnderlay">底图为原图 · </template>
+            拖拽选中房间顶点可修正轮廓 · 改名称后保存或确认
+            <template v-if="canPreview"> · 点击画布查看大图</template>
+          </template>
         </span>
       </div>
     </div>
@@ -213,6 +276,7 @@ onUnmounted(() => {
           type="button"
           class="btn primary block"
           :disabled="!canConfirm"
+          data-testid="confirm-floorplan-btn"
           @click="confirmFloorplan"
         >
           确认户型，进入设计 →
@@ -282,6 +346,32 @@ onUnmounted(() => {
 .tool:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.tool.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(201, 125, 58, 0.1);
+}
+
+.scale-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.scale-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.scale-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .underlay-toggle {

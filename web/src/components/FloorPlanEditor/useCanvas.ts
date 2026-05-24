@@ -8,13 +8,19 @@ import {
   polygonCentroid,
   scaleLabel,
   type FloorPlanData,
+  type FloorPoint,
   type FloorRoom,
 } from '@/types/floorplan'
+
+export type EditorMode = 'select' | 'scale'
 
 export function useFloorPlanCanvas(projectId: Ref<number>) {
   const router = useRouter()
   const floorplan = ref<FloorPlanData | null>(null)
   const selectedRoomId = ref<string | null>(null)
+  const editorMode = ref<EditorMode>('select')
+  const scalePoints = ref<[FloorPoint | null, FloorPoint | null]>([null, null])
+  const scaleDistanceM = ref('')
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
@@ -43,6 +49,13 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   const canConfirm = computed(
     () => Boolean(floorplan.value?.rooms.length) && !hasValidationError.value && !saving.value,
   )
+
+  const scaleMarkers = computed(() => scalePoints.value.filter((point): point is FloorPoint => point != null))
+
+  const canApplyScale = computed(() => {
+    const distance = Number(scaleDistanceM.value)
+    return scalePoints.value[0] != null && scalePoints.value[1] != null && Number.isFinite(distance) && distance > 0
+  })
 
   async function load() {
     loading.value = true
@@ -75,7 +88,57 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   }
 
   function selectRoom(roomId: string) {
+    if (editorMode.value !== 'select') {
+      return
+    }
     selectedRoomId.value = roomId
+  }
+
+  function setEditorMode(mode: EditorMode) {
+    editorMode.value = mode
+    if (mode === 'select') {
+      resetScalePoints()
+    }
+  }
+
+  function resetScalePoints() {
+    scalePoints.value = [null, null]
+  }
+
+  function addScalePoint(point: FloorPoint) {
+    if (editorMode.value !== 'scale') {
+      return
+    }
+    if (!scalePoints.value[0]) {
+      scalePoints.value = [point, scalePoints.value[1]]
+      return
+    }
+    if (!scalePoints.value[1]) {
+      scalePoints.value = [scalePoints.value[0], point]
+      return
+    }
+    scalePoints.value = [point, null]
+  }
+
+  async function applyScale() {
+    const pointA = scalePoints.value[0]
+    const pointB = scalePoints.value[1]
+    const distance = Number(scaleDistanceM.value)
+    if (!pointA || !pointB || !Number.isFinite(distance) || distance <= 0) {
+      return
+    }
+    saving.value = true
+    error.value = null
+    try {
+      const saved = await api.setFloorplanScale(projectId.value, pointA, pointB, distance)
+      floorplan.value = saved as FloorPlanData
+      resetScalePoints()
+      editorMode.value = 'select'
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '比例尺标定失败'
+    } finally {
+      saving.value = false
+    }
   }
 
   function updateRoomName(name: string) {
@@ -85,6 +148,21 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     floorplan.value.rooms = floorplan.value.rooms.map((room) =>
       room.id === selectedRoom.value?.id ? { ...room, name } : room,
     )
+  }
+
+  function updateRoomVertex(roomId: string, vertexIndex: number, point: FloorPoint) {
+    if (!floorplan.value) {
+      return
+    }
+    floorplan.value.rooms = floorplan.value.rooms.map((room) => {
+      if (room.id !== roomId) {
+        return room
+      }
+      const polygon = room.polygon.map((vertex, index) =>
+        index === vertexIndex ? { ...point } : vertex,
+      )
+      return { ...room, polygon }
+    })
   }
 
   function roomLabel(room: FloorRoom) {
@@ -123,15 +201,25 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     floorplan,
     selectedRoomId,
     selectedRoom,
+    editorMode,
+    scalePoints,
+    scaleDistanceM,
+    scaleMarkers,
+    canApplyScale,
     viewBox,
     scaleText,
     loading,
     saving,
-    error,
+    error: error,
     load,
     save,
     selectRoom,
+    setEditorMode,
+    addScalePoint,
+    resetScalePoints,
+    applyScale,
     updateRoomName,
+    updateRoomVertex,
     roomLabel,
     roomCenter,
     confirmFloorplan,

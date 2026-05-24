@@ -92,3 +92,15 @@ export function scaleLabel(scale: number | null): string {
   const metersPerPixel = 1 / scale
   return `1px = ${metersPerPixel.toFixed(3)}m`
 }
+
+export function svgPointFromEvent(event: MouseEvent, svg: SVGSVGElement): FloorPoint {
+  const point = svg.createSVGPoint()
+  point.x = event.clientX
+  point.y = event.clientY
+  const matrix = svg.getScreenCTM()
+  if (!matrix) {
+    return { x: 0, y: 0 }
+  }
+  const transformed = point.matrixTransform(matrix.inverse())
+  return { x: transformed.x, y: transformed.y }
+}

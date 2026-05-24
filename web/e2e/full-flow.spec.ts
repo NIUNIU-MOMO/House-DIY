@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 import {
   installCoreMocks,
+  installEditorMocks,
   installGenerateMocks,
   installParseMocks,
   PROJECT_ID,
@@ -34,7 +35,15 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await installCoreMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/editor`)
     await expect(page.getByText('3 校对')).toBeVisible()
-    await expect(page.getByRole('button', { name: /确认户型/ })).toBeVisible()
+    await expect(page.getByTestId('confirm-floorplan-btn')).toBeVisible()
+  })
+
+  test('04b 校对 — 质检 error 时禁止确认', async ({ page }) => {
+    await installEditorMocks(page)
+    await page.goto(`/projects/${PROJECT_ID}/editor`)
+    await expect(page.getByText('户型质检 · 未通过')).toBeVisible()
+    await expect(page.getByTestId('confirm-floorplan-btn')).toBeDisabled()
+    await expect(page.getByText('存在严重质检问题')).toBeVisible()
   })
 
   test('05 设计 — Studio 与 RAG', async ({ page }) => {

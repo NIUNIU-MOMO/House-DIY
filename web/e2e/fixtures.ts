@@ -16,11 +16,75 @@ export const mockFloorplan = {
   scale: 100,
   walls: [{ id: 'w1', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }],
   rooms: [
-    { id: 'r1', name: '客厅', polygon: [{ x: 0, y: 0 }, { x: 50, y: 50 }], area: 25 },
-    { id: 'r2', name: '主卧', polygon: [{ x: 50, y: 0 }, { x: 100, y: 50 }], area: 20 },
+    {
+      id: 'r1',
+      name: '客厅',
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      area: 25,
+    },
+    {
+      id: 'r2',
+      name: '主卧',
+      polygon: [
+        { x: 100, y: 0 },
+        { x: 200, y: 0 },
+        { x: 200, y: 100 },
+        { x: 100, y: 100 },
+      ],
+      area: 20,
+    },
   ],
   openings: [],
   source_url: null,
+  validation: { level: 'pass', issues: [] },
+}
+
+export const mockFloorplanDraftError = {
+  status: 'draft',
+  scale: null,
+  walls: [{ id: 'w1', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }],
+  rooms: [
+    {
+      id: 'r1',
+      name: '客厅',
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      area: 25,
+    },
+    {
+      id: 'r2',
+      name: '主卧',
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      area: 20,
+    },
+  ],
+  openings: [],
+  source_url: null,
+  validation: {
+    level: 'error',
+    issues: [
+      {
+        code: 'ROOM_DUPLICATE_POLYGON',
+        severity: 'error',
+        message: '主卧(r2) 与 客厅(r1) polygon 完全相同',
+        room_ids: ['r1', 'r2'],
+      },
+    ],
+  },
 }
 
 export const mockDesignSpec = {
@@ -152,6 +216,40 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
   await page.route('**/api/v1/knowledge/search**', (route) =>
     route.fulfill({ json: mockKnowledgeSearch }),
   )
+}
+
+export async function installEditorMocks(page: Page) {
+  await installCoreMocks(page, {
+    projects: [{ ...mockProject, status: 'review', name: 'E2E 校对样本' }],
+  })
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan`, (route) => {
+    const method = route.request().method()
+    if (method === 'GET') {
+      return route.fulfill({ json: mockFloorplanDraftError })
+    }
+    if (method === 'PUT') {
+      const body = route.request().postDataJSON() as { status?: string }
+      if (body.status === 'confirmed') {
+        return route.fulfill({
+          status: 422,
+          json: {
+            detail: {
+              message: '户型质检未通过，请修正后再确认',
+              validation: mockFloorplanDraftError.validation,
+            },
+          },
+        })
+      }
+      return route.fulfill({
+        json: {
+          ...mockFloorplanDraftError,
+          ...body,
+          validation: { level: 'pass', issues: [] },
+        },
+      })
+    }
+    return route.continue()
+  })
 }
 
 export async function installParseMocks(page: Page) {
