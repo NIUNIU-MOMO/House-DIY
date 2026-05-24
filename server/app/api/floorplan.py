@@ -9,7 +9,9 @@ from app.models.project import Project, ProjectStatus
 from app.schemas.floorplan import FloorPlanModel, FloorPlanRead, FloorPlanStatus, ScaleRequest
 from app.schemas.task import TaskRead
 from app.services.floorplan import storage
+from app.services.floorplan.floorplan_service import prepare_floorplan_for_save
 from app.services.floorplan.parser_cv import compute_scale_pixels_per_meter
+from app.services.floorplan.parser_validate import validation_blocks_confirm
 from app.services.floorplan.task_parse import create_floorplan_parse_task, start_floorplan_parse
 
 router = APIRouter(prefix="/projects/{project_id}/floorplan", tags=["floorplan"])
@@ -28,6 +30,9 @@ def _to_read_model(project_id: int) -> FloorPlanRead:
     model = storage.load_floorplan(project_id)
     if model is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floorplan not found")
+
+    if model.validation is None:
+        model = prepare_floorplan_for_save(model)
 
     meta = storage.load_meta(project_id) or {}
     source_image = meta.get("source_image")
@@ -98,8 +103,20 @@ def update_floorplan(
     if not storage.has_floorplan(project_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floorplan not found")
 
-    storage.save_floorplan(project_id, payload)
+    prepared = prepare_floorplan_for_save(payload)
     if payload.status == FloorPlanStatus.CONFIRMED:
+        if validation_blocks_confirm(prepared.validation):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "户型质检未通过，请修正后再确认",
+                    "validation": prepared.validation.model_dump() if prepared.validation else None,
+                },
+            )
+        prepared = prepared.model_copy(update={"status": FloorPlanStatus.CONFIRMED})
+
+    storage.save_floorplan(project_id, prepared)
+    if prepared.status == FloorPlanStatus.CONFIRMED:
         project.status = ProjectStatus.DESIGNING
         db.add(project)
         db.commit()
@@ -124,7 +141,8 @@ def set_floorplan_scale(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     updated = model.model_copy(update={"scale": scale})
-    storage.save_floorplan(project_id, updated)
+    prepared = prepare_floorplan_for_save(updated)
+    storage.save_floorplan(project_id, prepared)
     return _to_read_model(project_id)
 
 

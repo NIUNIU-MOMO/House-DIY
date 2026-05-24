@@ -1,5 +1,7 @@
 import math
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -169,24 +171,31 @@ def _is_colored_floorplan(image: np.ndarray) -> bool:
     return float(hsv[:, :, 1].std()) > 20.0
 
 
-def extract_walls_from_image(source_path: Path, vlm_result: VlmParseResult) -> list[Wall]:
+@dataclass
+class WallExtractResult:
+    walls: list[Wall]
+    quality: float | None
+    wall_source: Literal["cv", "polygon"]
+
+
+def extract_walls_with_meta(source_path: Path, vlm_result: VlmParseResult) -> WallExtractResult:
     """
-    OpenCV 提取结构墙线；质量不足时回退 VLM 房间矩形墙
+    OpenCV 提取结构墙线，并返回质量分与最终墙线来源
 
     @param source_path 源图片路径
     @param vlm_result VLM 解析结果
-    @return 墙线段列表
+    @return 墙线提取结果
     """
     fallback = walls_from_room_polygons([room.polygon_points() for room in vlm_result.rooms])
     if source_path.suffix.lower() == ".pdf":
-        return fallback
+        return WallExtractResult(walls=fallback, quality=None, wall_source="polygon")
 
     image = cv2.imread(str(source_path))
     if image is None:
-        return fallback
+        return WallExtractResult(walls=fallback, quality=None, wall_source="polygon")
 
     if _is_colored_floorplan(image):
-        return fallback
+        return WallExtractResult(walls=fallback, quality=0.0, wall_source="polygon")
 
     img_h, img_w = image.shape[:2]
     min_line_length = max(MIN_LINE_LENGTH, int(min(img_w, img_h) * 0.05))
@@ -203,7 +212,7 @@ def extract_walls_from_image(source_path: Path, vlm_result: VlmParseResult) -> l
     )
 
     if lines is None:
-        return fallback
+        return WallExtractResult(walls=fallback, quality=0.0, wall_source="polygon")
 
     merged = _merge_similar_lines(lines, min_line_length=min_line_length)
     bounds = _vlm_room_bounds(vlm_result, img_w, img_h)
@@ -215,11 +224,22 @@ def extract_walls_from_image(source_path: Path, vlm_result: VlmParseResult) -> l
             continue
         filtered.append((x1, y1, x2, y2))
 
-    walls = _lines_to_walls(filtered)
-    quality = _score_walls(walls, vlm_result, img_w, img_h)
-    if quality < MIN_WALL_QUALITY:
-        return fallback
-    return walls if len(walls) >= MIN_WALL_COUNT else fallback
+    cv_walls = _lines_to_walls(filtered)
+    quality = _score_walls(cv_walls, vlm_result, img_w, img_h)
+    if quality < MIN_WALL_QUALITY or len(cv_walls) < MIN_WALL_COUNT:
+        return WallExtractResult(walls=fallback, quality=quality, wall_source="polygon")
+    return WallExtractResult(walls=cv_walls, quality=quality, wall_source="cv")
+
+
+def extract_walls_from_image(source_path: Path, vlm_result: VlmParseResult) -> list[Wall]:
+    """
+    OpenCV 提取结构墙线；质量不足时回退 VLM 房间矩形墙
+
+    @param source_path 源图片路径
+    @param vlm_result VLM 解析结果
+    @return 墙线段列表
+    """
+    return extract_walls_with_meta(source_path, vlm_result).walls
 
 
 def apply_cv_walls(model: FloorPlanModel, walls: list[Wall]) -> FloorPlanModel:

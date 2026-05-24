@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,6 +12,25 @@ class FloorPlanStatus(str, Enum):
 class OpeningType(str, Enum):
     DOOR = "door"
     WINDOW = "window"
+
+
+class ValidationIssue(BaseModel):
+    code: str
+    severity: Literal["error", "warning", "info"]
+    message: str
+    room_ids: list[str] = Field(default_factory=list)
+
+
+class FloorPlanValidation(BaseModel):
+    level: Literal["pass", "warning", "error", "unknown"] = "unknown"
+    checked_at: str | None = None
+    issues: list[ValidationIssue] = Field(default_factory=list)
+
+
+class ParseMeta(BaseModel):
+    vlm_model: str | None = None
+    cv_wall_quality: float | None = None
+    wall_source: Literal["cv", "polygon"] | None = None
 
 
 class Point(BaseModel):
@@ -47,6 +66,8 @@ class FloorPlanModel(BaseModel):
     rooms: list[Room] = Field(default_factory=list)
     openings: list[Opening] = Field(default_factory=list)
     status: FloorPlanStatus = FloorPlanStatus.DRAFT
+    validation: FloorPlanValidation | None = None
+    parse_meta: ParseMeta | None = None
 
     @model_validator(mode="after")
     def validate_walls_for_confirmed(self) -> "FloorPlanModel":

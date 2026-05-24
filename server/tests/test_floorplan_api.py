@@ -79,6 +79,20 @@ FLOORPLAN_DRAFT = {
 }
 
 
+def _room_for_api(room_id: str, name: str, x: float, y: float, w: float, h: float, area: float):
+    return {
+        "id": room_id,
+        "name": name,
+        "polygon": [
+            {"x": x, "y": y},
+            {"x": x + w, "y": y},
+            {"x": x + w, "y": y + h},
+            {"x": x, "y": y + h},
+        ],
+        "area": area,
+    }
+
+
 @pytest.mark.asyncio
 async def test_update_floorplan_confirmed(client, data_dir):
     create = await client.post("/api/v1/projects", json={"name": "校对测试"})
@@ -88,14 +102,46 @@ async def test_update_floorplan_confirmed(client, data_dir):
         files={"file": ("plan.png", MINI_PNG, "image/png")},
     )
 
-    confirmed = {**FLOORPLAN_DRAFT, "status": "confirmed", "rooms": [{**FLOORPLAN_DRAFT["rooms"][0], "name": "客餐厅"}]}
+    confirmed = {
+        **FLOORPLAN_DRAFT,
+        "status": "confirmed",
+        "rooms": [
+            {**FLOORPLAN_DRAFT["rooms"][0], "name": "客餐厅"},
+            _room_for_api("r2", "卧室", 400, 0, 200, 300, 8.0),
+        ],
+    }
     updated = await client.put(f"/api/v1/projects/{project_id}/floorplan", json=confirmed)
     assert updated.status_code == 200
     assert updated.json()["status"] == "confirmed"
     assert updated.json()["rooms"][0]["name"] == "客餐厅"
+    assert updated.json()["validation"]["level"] == "pass"
 
     project = await client.get(f"/api/v1/projects/{project_id}")
     assert project.json()["status"] == "designing"
+
+
+@pytest.mark.asyncio
+async def test_update_floorplan_confirmed_rejected_on_validation_error(client, data_dir):
+    create = await client.post("/api/v1/projects", json={"name": "质检拦截"})
+    project_id = create.json()["id"]
+    await client.post(
+        f"/api/v1/projects/{project_id}/floorplan",
+        files={"file": ("plan.png", MINI_PNG, "image/png")},
+    )
+
+    duplicate_room = {
+        "id": "r2",
+        "name": "卧室",
+        "polygon": FLOORPLAN_DRAFT["rooms"][0]["polygon"],
+        "area": 10.0,
+    }
+    payload = {
+        **FLOORPLAN_DRAFT,
+        "status": "confirmed",
+        "rooms": [FLOORPLAN_DRAFT["rooms"][0], duplicate_room],
+    }
+    updated = await client.put(f"/api/v1/projects/{project_id}/floorplan", json=payload)
+    assert updated.status_code == 422
 
 
 @pytest.mark.asyncio

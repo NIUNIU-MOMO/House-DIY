@@ -24,6 +24,10 @@ const {
   updateRoomName,
   roomLabel,
   confirmFloorplan,
+  validationLevel,
+  validationIssues,
+  hasValidationError,
+  canConfirm,
 } = useFloorPlanCanvas(projectId)
 
 const previewOpen = ref(false)
@@ -62,7 +66,20 @@ onUnmounted(() => {
 <template>
   <div v-if="loading" class="editor-loading">加载户型数据…</div>
   <div v-else-if="error && !floorplan" class="editor-error">{{ error }}</div>
-  <div v-else-if="floorplan" class="editor-layout">
+  <div v-else-if="floorplan" class="editor-shell">
+    <div
+      v-if="validationIssues.length"
+      class="validation-banner"
+      :class="validationLevel"
+    >
+      <strong>户型质检 · {{ validationLevel === 'error' ? '未通过' : '有警告' }}</strong>
+      <ul>
+        <li v-for="(issue, index) in validationIssues" :key="`${issue.code}-${index}`">
+          {{ issue.message }}
+        </li>
+      </ul>
+    </div>
+    <div class="editor-layout">
     <aside class="editor-tools">
       <h4>工具</h4>
       <button type="button" class="tool active">选择</button>
@@ -195,17 +212,58 @@ onUnmounted(() => {
         <button
           type="button"
           class="btn primary block"
-          :disabled="saving || !floorplan.rooms.length"
+          :disabled="!canConfirm"
           @click="confirmFloorplan"
         >
           确认户型，进入设计 →
         </button>
+        <p v-if="hasValidationError" class="tiny warn-text">
+          存在严重质检问题，请修正房间边界或重新解析后再确认
+        </p>
       </div>
     </aside>
+  </div>
   </div>
 </template>
 
 <style scoped>
+.editor-shell {
+  padding: 0 1.5rem 1rem;
+}
+
+.validation-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.validation-banner.error {
+  background: rgba(180, 70, 70, 0.12);
+  border: 1px solid rgba(180, 70, 70, 0.35);
+  color: #8f3d3d;
+}
+
+.validation-banner.warning {
+  background: rgba(201, 125, 58, 0.12);
+  border: 1px solid rgba(201, 125, 58, 0.35);
+  color: #8a5a24;
+}
+
+.validation-banner ul {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.validation-banner li + li {
+  margin-top: 0.25rem;
+}
+
+.warn-text {
+  color: #8a5a24;
+  margin: 0;
+}
+
 .editor-loading,
 .editor-error {
   padding: 2rem;

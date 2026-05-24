@@ -25,12 +25,31 @@ export interface FloorOpening {
   connects: string[]
 }
 
+export interface ValidationIssue {
+  code: string
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  room_ids: string[]
+}
+
+export interface FloorPlanValidation {
+  level: 'pass' | 'warning' | 'error' | 'unknown'
+  checked_at?: string | null
+  issues: ValidationIssue[]
+}
+
 export interface FloorPlanData {
   scale: number | null
   status: string
   walls: FloorWall[]
   rooms: FloorRoom[]
   openings: FloorOpening[]
+  validation?: FloorPlanValidation | null
+  parse_meta?: {
+    vlm_model?: string | null
+    cv_wall_quality?: number | null
+    wall_source?: 'cv' | 'polygon' | null
+  } | null
   source_url?: string | null
   source_width?: number | null
   source_height?: number | null

@@ -12,8 +12,11 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskStatus, TaskType
+from app.core.config import settings
+from app.schemas.floorplan import ParseMeta, ValidationIssue
 from app.services.floorplan import storage
-from app.services.floorplan.parser_cv import apply_cv_walls, extract_walls_from_image
+from app.services.floorplan.floorplan_service import prepare_floorplan_for_save
+from app.services.floorplan.parser_cv import extract_walls_with_meta
 from app.services.floorplan.parser_vlm import (
     apply_coord_offset,
     load_prompt_for_image,
@@ -26,8 +29,8 @@ from app.services.omlx_client import OmlxClient, get_omlx_client
 PARSE_STEPS = [
     "图像预处理与矫正",
     "oMLX VLM 识别房间与门窗",
-    "OpenCV 提取墙线矢量",
-    "生成 FloorPlanModel 草稿",
+    "OpenCV 评估墙线质量",
+    "生成草稿并质检",
 ]
 
 
@@ -131,6 +134,42 @@ def _offset_walls(walls, offset_x: float, offset_y: float):
     return shifted
 
 
+def _offset_wall_extract(wall_extract, offset_x: float, offset_y: float):
+    if offset_x == 0 and offset_y == 0:
+        return wall_extract
+    from app.services.floorplan.parser_cv import WallExtractResult
+
+    return WallExtractResult(
+        walls=_offset_walls(wall_extract.walls, offset_x, offset_y),
+        quality=wall_extract.quality,
+        wall_source=wall_extract.wall_source,
+    )
+
+
+def _append_cv_quality_info(prepared, wall_extract):
+    if prepared.validation is None:
+        return prepared
+    if wall_extract.wall_source != "polygon" or wall_extract.quality is None:
+        return prepared
+    issues = list(prepared.validation.issues)
+    issues.append(
+        ValidationIssue(
+            code="WALL_CV_LOW_QUALITY",
+            severity="info",
+            message=(
+                f"OpenCV 墙线质量 {wall_extract.quality:.2f} 不足或未适用，"
+                "已统一使用房间轮廓墙线"
+            ),
+            room_ids=[],
+        )
+    )
+    return prepared.model_copy(
+        update={
+            "validation": prepared.validation.model_copy(update={"issues": issues}),
+        }
+    )
+
+
 def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None) -> None:
     client = omlx_client or get_omlx_client()
     db = SessionLocal()
@@ -200,14 +239,21 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         _update_task(db, task, progress=60, step=2, step_label=PARSE_STEPS[2])
         _notify_task(task)
 
-        cv_walls = extract_walls_from_image(Path(processed_path), vlm_result)
-        cv_walls = _offset_walls(cv_walls, float(offset_x), float(offset_y))
-        draft = apply_cv_walls(draft, cv_walls)
+        wall_extract = extract_walls_with_meta(Path(processed_path), vlm_result)
+        wall_extract = _offset_wall_extract(wall_extract, float(offset_x), float(offset_y))
 
         _update_task(db, task, progress=85, step=3, step_label=PARSE_STEPS[3])
         _notify_task(task)
 
-        storage.save_floorplan(task.project_id, draft)
+        parse_meta = ParseMeta(
+            vlm_model=settings.house_diy_omlx_vlm_model,
+            cv_wall_quality=wall_extract.quality,
+            wall_source="polygon",
+        )
+        prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta)
+        prepared = _append_cv_quality_info(prepared, wall_extract)
+
+        storage.save_floorplan(task.project_id, prepared)
         project.status = ProjectStatus.REVIEW
         db.add(project)
         db.commit()

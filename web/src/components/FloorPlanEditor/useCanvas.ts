@@ -32,6 +32,18 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
 
   const scaleText = computed(() => scaleLabel(floorplan.value?.scale ?? null))
 
+  const validationLevel = computed(() => floorplan.value?.validation?.level ?? 'unknown')
+
+  const validationIssues = computed(
+    () => floorplan.value?.validation?.issues?.filter((issue) => issue.severity !== 'info') ?? [],
+  )
+
+  const hasValidationError = computed(() => validationLevel.value === 'error')
+
+  const canConfirm = computed(
+    () => Boolean(floorplan.value?.rooms.length) && !hasValidationError.value && !saving.value,
+  )
+
   async function load() {
     loading.value = true
     error.value = null
@@ -85,8 +97,14 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   }
 
   async function confirmFloorplan() {
-    if (!floorplan.value) {
+    if (!floorplan.value || hasValidationError.value) {
       return
+    }
+    if (validationLevel.value === 'warning') {
+      const proceed = window.confirm('户型质检存在警告项，确认仍要继续进入设计吗？')
+      if (!proceed) {
+        return
+      }
     }
     saving.value = true
     error.value = null
@@ -117,5 +135,9 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     roomLabel,
     roomCenter,
     confirmFloorplan,
+    validationLevel,
+    validationIssues,
+    hasValidationError,
+    canConfirm,
   }
 }
