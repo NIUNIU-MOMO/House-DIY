@@ -182,6 +182,78 @@ def _detect_low_room_count(rooms: list[Room]) -> list[ValidationIssue]:
     ]
 
 
+def _detect_duplicate_labels(rooms: list[Room]) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    groups: dict[str, list[Room]] = {}
+    for room in rooms:
+        label = room.name.strip()
+        if not label:
+            continue
+        groups.setdefault(label, []).append(room)
+
+    for label, grouped in groups.items():
+        if len(grouped) < 2:
+            continue
+        ids = "、".join(f"{room.name}({room.id})" for room in grouped)
+        issues.append(
+            ValidationIssue(
+                code="ROOM_DUPLICATE_LABEL",
+                severity="warning",
+                message=f"存在同名房间「{label}」：{ids}",
+                room_ids=[room.id for room in grouped],
+            )
+        )
+    return issues
+
+
+def _raw_polygon_from_points(points: list[Point]) -> Polygon | None:
+    if len(points) < 3:
+        return None
+    try:
+        return Polygon([(p.x, p.y) for p in points])
+    except Exception:
+        return None
+
+
+def _detect_invalid_polygons(rooms: list[Room]) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    for room in rooms:
+        shape = _raw_polygon_from_points(room.polygon)
+        if shape is None or shape.is_empty or shape.area <= 0:
+            issues.append(
+                ValidationIssue(
+                    code="POLYGON_INVALID",
+                    severity="error",
+                    message=f"{room.name}({room.id}) 多边形无效或面积为 0",
+                    room_ids=[room.id],
+                )
+            )
+            continue
+        if not shape.is_valid or not shape.is_simple:
+            issues.append(
+                ValidationIssue(
+                    code="POLYGON_INVALID",
+                    severity="error",
+                    message=f"{room.name}({room.id}) 多边形自交叉或拓扑无效",
+                    room_ids=[room.id],
+                )
+            )
+    return issues
+
+
+def _detect_low_resolution(meta_low_resolution: bool | None) -> list[ValidationIssue]:
+    if not meta_low_resolution:
+        return []
+    return [
+        ValidationIssue(
+            code="LOW_RESOLUTION",
+            severity="warning",
+            message="源图短边低于 800px，解析精度可能不足，建议更换更高分辨率原图",
+            room_ids=[],
+        )
+    ]
+
+
 def _resolve_level(issues: list[ValidationIssue]) -> str:
     if any(issue.severity == "error" for issue in issues):
         return "error"
@@ -190,21 +262,30 @@ def _resolve_level(issues: list[ValidationIssue]) -> str:
     return "pass"
 
 
-def validate_floorplan(model: FloorPlanModel, plan_type: PlanType | None = None) -> FloorPlanValidation:
+def validate_floorplan(
+    model: FloorPlanModel,
+    plan_type: PlanType | None = None,
+    *,
+    low_resolution: bool = False,
+) -> FloorPlanValidation:
     """
     对 FloorPlanModel 执行质检
 
     @param model 户型模型
     @param plan_type 图源类型，影响重叠阈值
+    @param low_resolution 源图是否低分辨率
     @return 质检结果
     """
     effective_plan_type = plan_type or model.plan_type
     issues: list[ValidationIssue] = []
+    issues.extend(_detect_invalid_polygons(model.rooms))
     issues.extend(_detect_duplicate_polygons(model.rooms))
+    issues.extend(_detect_duplicate_labels(model.rooms))
     issues.extend(_detect_overlaps(model.rooms, effective_plan_type))
     issues.extend(_detect_area_mismatch(model.rooms, model.scale))
     issues.extend(_detect_all_rectangles(model.rooms))
     issues.extend(_detect_low_room_count(model.rooms))
+    issues.extend(_detect_low_resolution(low_resolution))
 
     return FloorPlanValidation(
         level=_resolve_level(issues),

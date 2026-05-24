@@ -15,6 +15,7 @@ const projectName = ref('')
 const estimatedArea = ref('')
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref<string | null>(null)
+const fileHint = ref<string | null>(null)
 const existingFloorplan = ref<FloorPlan | null>(null)
 const uploading = ref(false)
 const error = ref<string | null>(null)
@@ -44,9 +45,25 @@ function setFile(file: File | null) {
     URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = null
   }
+  fileHint.value = null
   selectedFile.value = file
-  if (file && file.type.startsWith('image/')) {
+  if (!file) {
+    return
+  }
+  if (file.type.startsWith('image/')) {
     previewUrl.value = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const shortEdge = Math.min(img.naturalWidth, img.naturalHeight)
+      if (shortEdge < 800) {
+        fileHint.value = `图片短边 ${shortEdge}px，低于 800px 建议更换更高分辨率原图`
+      }
+    }
+    img.src = previewUrl.value
+    return
+  }
+  if (file.type === 'application/pdf') {
+    fileHint.value = 'PDF 将在上传后自动栅格化；矢量 PDF 优先提取墙线区域'
   }
 }
 
@@ -134,6 +151,10 @@ onBeforeUnmount(() => {
 
       <h2>上传标准平面图</h2>
       <p class="muted">支持开发商户型图 PNG / PDF · 建议带尺寸标注</p>
+
+      <div v-if="fileHint" class="plan-type-banner">
+        <p class="plan-type-message">{{ fileHint }}</p>
+      </div>
 
       <div v-if="planTypeHint" class="plan-type-banner" :class="{ marketing: planTypeHint.isMarketing }">
         <p class="plan-type-title">已识别：{{ planTypeHint.label }}</p>

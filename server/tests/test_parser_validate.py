@@ -84,3 +84,40 @@ def test_validate_area_mismatch_warning_when_scale_set():
     assert result.level == "warning"
     assert any(issue.code == "AREA_MISMATCH" for issue in result.issues)
     assert not validation_blocks_confirm(result)
+
+
+def test_validate_detects_duplicate_label():
+    model = FloorPlanModel(
+        rooms=[
+            _room("r1", "卧室", 0, 0, 100, 100, 10.0),
+            _room("r2", "卧室", 200, 0, 100, 100, 12.0),
+        ]
+    )
+    result = validate_floorplan(model)
+    assert any(issue.code == "ROOM_DUPLICATE_LABEL" for issue in result.issues)
+
+
+def test_validate_detects_self_intersecting_polygon():
+    model = FloorPlanModel(
+        rooms=[
+            Room(
+                id="r1",
+                name="异常",
+                polygon=[
+                    Point(x=0, y=0),
+                    Point(x=200, y=200),
+                    Point(x=200, y=0),
+                    Point(x=0, y=200),
+                ],
+            )
+        ]
+    )
+    result = validate_floorplan(model)
+    assert result.level == "error"
+    assert any(issue.code == "POLYGON_INVALID" for issue in result.issues)
+
+
+def test_validate_low_resolution_warning():
+    model = FloorPlanModel(rooms=[_room("r1", "客厅", 0, 0, 100, 100)])
+    result = validate_floorplan(model, low_resolution=True)
+    assert any(issue.code == "LOW_RESOLUTION" for issue in result.issues)

@@ -24,15 +24,21 @@ def prepare_floorplan_for_save(
     model: FloorPlanModel,
     *,
     parse_meta: ParseMeta | None = None,
+    low_resolution: bool = False,
 ) -> FloorPlanModel:
     """
     保存前同步墙线并执行质检
 
     @param model 户型模型
     @param parse_meta 解析元信息（可选，覆盖 model 内已有值）
+    @param low_resolution 源图是否低分辨率
     @return 可写入磁盘的模型
     """
     synced = sync_walls_from_rooms(model)
-    validation = validate_floorplan(synced, plan_type=synced.plan_type)
+    validation = validate_floorplan(
+        synced,
+        plan_type=synced.plan_type,
+        low_resolution=low_resolution,
+    )
     meta = parse_meta if parse_meta is not None else synced.parse_meta
     return synced.model_copy(update={"validation": validation, "parse_meta": meta})

@@ -5,6 +5,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus
 from app.services.floorplan.plan_classifier import classify_floorplan_image
+from app.services.floorplan.parser_pdf import ensure_raster_source, is_pdf_path
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf"}
 SOURCE_FILENAME = "source.png"
@@ -55,7 +56,13 @@ def save_upload(
     source_path = project_dir / target_name
     source_path.write_bytes(content)
 
-    classification = classify_floorplan_image(source_path)
+    raster_path, raster_meta = ensure_raster_source(source_path)
+    classification = classify_floorplan_image(raster_path)
+
+    if is_pdf_path(source_path):
+        meta_source_image = raster_meta.get("raster_image", SOURCE_FILENAME)
+    else:
+        meta_source_image = target_name
 
     draft = FloorPlanModel(
         scale=None,
@@ -68,13 +75,14 @@ def save_upload(
     save_floorplan(project_id, draft)
 
     meta = {
-        "source_image": target_name,
+        "source_image": meta_source_image,
         "original_filename": original_filename,
         "estimated_area": estimated_area,
         "plan_type": classification.plan_type,
         "has_watermark": classification.has_watermark,
         "plan_type_message": classification.message,
     }
+    meta.update(raster_meta)
     (project_dir / META_FILENAME).write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -129,6 +137,31 @@ def get_source_path(project_id: int) -> Path | None:
         return None
     source_path = get_project_dir(project_id) / meta["source_image"]
     return source_path if source_path.is_file() else None
+
+
+def resolve_parse_image_path(project_id: int) -> tuple[Path | None, dict]:
+    """
+    解析任务使用的 raster 图像路径（PDF 会先栅格化）
+
+    @param project_id 项目 ID
+    @return (raster 路径, PDF/分辨率元信息)
+    """
+    meta = load_meta(project_id)
+    project_dir = get_project_dir(project_id)
+    extra: dict = {}
+    if meta and meta.get("original_pdf"):
+        pdf_path = project_dir / str(meta["original_pdf"])
+        if pdf_path.is_file():
+            raster_path, extra = ensure_raster_source(pdf_path)
+            return raster_path, extra
+
+    source_path = get_source_path(project_id)
+    if source_path is None:
+        return None, {}
+    if is_pdf_path(source_path):
+        raster_path, extra = ensure_raster_source(source_path)
+        return raster_path, extra
+    return source_path, extra
 
 
 def get_structural_path(project_id: int) -> Path | None:

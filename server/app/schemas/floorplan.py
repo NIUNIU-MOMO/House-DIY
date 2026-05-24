@@ -32,8 +32,11 @@ class FloorPlanValidation(BaseModel):
 class ParseMeta(BaseModel):
     vlm_model: str | None = None
     vlm_steps: int | None = None
+    vlm_duration_ms: int | None = None
     cv_wall_quality: float | None = None
     wall_source: Literal["cv", "polygon"] | None = None
+    seg_regions: int | None = None
+    seg_backend: str | None = None
 
 
 class Point(BaseModel):

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import mimetypes
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from app.services.floorplan.parser_vlm import (
 )
 from app.services.floorplan.plan_classifier import PlanType, classify_floorplan_image
 from app.services.floorplan.parser_preprocess import preprocess_floorplan_image
+from app.services.floorplan.parser_seg import benchmark_seg_region_count, extract_room_regions
 from app.services.omlx_client import OmlxClient, get_omlx_client
 
 PARSE_STEPS = [
@@ -231,11 +233,13 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             _notify_task(task)
             return
 
-        source_path = storage.get_source_path(task.project_id)
-        if source_path is None:
+        raster_path, raster_meta = storage.resolve_parse_image_path(task.project_id)
+        if raster_path is None:
             _update_task(db, task, status=TaskStatus.FAILED, error="Source image not found")
             _notify_task(task)
             return
+        if raster_meta:
+            storage.patch_meta(task.project_id, raster_meta)
 
         project.status = ProjectStatus.PARSING
         db.add(project)
@@ -251,7 +255,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         )
         _notify_task(task)
 
-        classification = classify_floorplan_image(source_path)
+        classification = classify_floorplan_image(raster_path)
         storage.patch_meta(
             task.project_id,
             {
@@ -263,7 +267,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         plan_type = classification.plan_type
 
         structural_path, preprocess_meta = preprocess_image(
-            str(source_path),
+            str(raster_path),
             plan_type=plan_type,
             has_watermark=classification.has_watermark,
         )
@@ -289,6 +293,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 source_h, source_w = image.shape[:2]
 
         vlm_model = settings.vlm_model_for_plan_type(plan_type)
+        vlm_started = time.perf_counter()
 
         vlm_result, draft, vlm_calls = _run_vlm_pipeline(
             client,
@@ -299,6 +304,8 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             source_h=source_h,
             vlm_model=vlm_model,
         )
+
+        vlm_duration_ms = int((time.perf_counter() - vlm_started) * 1000)
 
         _update_task(db, task, progress=62, step=2, step_label=PARSE_STEPS[2])
         _notify_task(task)
@@ -312,17 +319,29 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         _update_task(db, task, progress=85, step=4, step_label=PARSE_STEPS[4])
         _notify_task(task)
 
+        seg_regions = 0
+        seg_backend = "disabled"
+        if settings.house_diy_seg_enabled:
+            regions = extract_room_regions(Path(structural_path))
+            seg_regions = len(regions)
+            _, seg_backend = benchmark_seg_region_count(structural_path)
+
         parse_meta = ParseMeta(
             vlm_model=vlm_model,
             vlm_steps=vlm_calls,
+            vlm_duration_ms=vlm_duration_ms,
             cv_wall_quality=wall_extract.quality,
             wall_source="polygon",
+            seg_regions=seg_regions,
+            seg_backend=seg_backend,
         )
-        prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta)
+        low_res = bool(preprocess_meta.get("low_resolution"))
+        prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta, low_resolution=low_res)
         prepared = _append_cv_quality_info(prepared, wall_extract)
 
         retry_hint = build_validation_retry_hint(prepared.validation)
         if retry_hint is not None:
+            retry_started = time.perf_counter()
             retry_result, retry_draft, retry_calls = _run_vlm_pipeline(
                 client,
                 structural_path=structural_path,
@@ -336,10 +355,17 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             vlm_result = retry_result
             draft = retry_draft
             vlm_calls += retry_calls
+            vlm_duration_ms += int((time.perf_counter() - retry_started) * 1000)
             wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
             wall_extract = _offset_wall_extract(wall_extract, float_offset[0], float_offset[1])
-            parse_meta = parse_meta.model_copy(update={"vlm_steps": vlm_calls})
-            prepared = prepare_floorplan_for_save(draft, parse_meta=parse_meta)
+            parse_meta = parse_meta.model_copy(
+                update={"vlm_steps": vlm_calls, "vlm_duration_ms": vlm_duration_ms},
+            )
+            prepared = prepare_floorplan_for_save(
+                draft,
+                parse_meta=parse_meta,
+                low_resolution=low_res,
+            )
             prepared = _append_cv_quality_info(prepared, wall_extract)
 
         storage.save_floorplan(task.project_id, prepared)

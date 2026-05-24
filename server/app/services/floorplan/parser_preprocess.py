@@ -8,6 +8,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from app.services.floorplan.parser_pdf import ensure_raster_source, is_pdf_path
 from app.services.floorplan.plan_classifier import (
     PlanType,
     WATERMARK_BLUE_HUE_HIGH,
@@ -324,9 +325,12 @@ def preprocess_floorplan_image(
         "structural_image": STRUCTURAL_FILENAME,
         "watermark_inpainted": False,
         "dimension_trimmed": False,
+        "low_resolution": False,
     }
-    if path.suffix.lower() == ".pdf":
-        return source_path, meta
+
+    if is_pdf_path(path):
+        path, pdf_meta = ensure_raster_source(path)
+        meta.update(pdf_meta)
 
     image = cv2.imread(str(path))
     if image is None:
@@ -335,6 +339,8 @@ def preprocess_floorplan_image(
     full_h, full_w = image.shape[:2]
     meta["source_width"] = full_w
     meta["source_height"] = full_h
+    if not meta.get("low_resolution"):
+        meta["low_resolution"] = min(full_w, full_h) < 800
 
     if plan_type == "cad_lineart":
         _, structural, offset, extra = _preprocess_cad(image)

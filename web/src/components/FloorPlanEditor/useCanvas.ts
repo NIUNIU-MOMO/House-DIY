@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { snapPointToWalls } from '@/utils/geometry'
 import { api } from '@/api/client'
 import {
   computeViewBox,
@@ -154,12 +155,13 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     if (!floorplan.value) {
       return
     }
+    const snapped = snapPointToWalls(point, floorplan.value.walls)
     floorplan.value.rooms = floorplan.value.rooms.map((room) => {
       if (room.id !== roomId) {
         return room
       }
       const polygon = room.polygon.map((vertex, index) =>
-        index === vertexIndex ? { ...point } : vertex,
+        index === vertexIndex ? { ...snapped } : vertex,
       )
       return { ...room, polygon }
     })
