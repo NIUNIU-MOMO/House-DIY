@@ -56,8 +56,10 @@ class QueueOmlxClient:
     def __init__(self, responses: list[str]):
         self.responses = responses
         self.index = 0
+        self.models_used: list[str | None] = []
 
     def chat_vision(self, prompt, image_base64, mime_type="image/png", model=None, **kwargs):
+        self.models_used.append(model)
         response = self.responses[self.index]
         self.index += 1
         return response
@@ -91,10 +93,25 @@ def test_run_multistep_vlm_parse_calls_step1_and_batches():
         img_w=400,
         img_h=300,
         plan_type="cad_lineart",
+        vlm_model="house-vlm-cad",
     )
     assert calls == 3
     assert len(result.rooms) == 3
     assert client.index == 3
+
+
+def test_run_multistep_vlm_parse_passes_vlm_model_to_client():
+    client = QueueOmlxClient([STEP1_JSON, STEP2_BATCH1_JSON, STEP2_BATCH2_JSON])
+    run_multistep_vlm_parse(
+        client,
+        image_base64="abc",
+        mime_type="image/png",
+        img_w=400,
+        img_h=300,
+        plan_type="marketing_color",
+        vlm_model="house-vlm-mkt",
+    )
+    assert client.models_used == ["house-vlm-mkt", "house-vlm-mkt", "house-vlm-mkt"]
 
 
 def test_build_validation_retry_hint_from_errors():

@@ -190,6 +190,7 @@ def _run_vlm_pipeline(
     source_w: int,
     source_h: int,
     retry_hint: str | None = None,
+    vlm_model: str | None = None,
 ) -> tuple[Any, Any, int]:
     image = cv2.imread(structural_path)
     img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
@@ -204,6 +205,7 @@ def _run_vlm_pipeline(
         img_h=img_h,
         plan_type=plan_type,
         retry_hint=retry_hint,
+        vlm_model=vlm_model,
     )
     offset_x, offset_y = crop_offset
     draft = merge_vlm_result(
@@ -286,6 +288,8 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             if image is not None:
                 source_h, source_w = image.shape[:2]
 
+        vlm_model = settings.vlm_model_for_plan_type(plan_type)
+
         vlm_result, draft, vlm_calls = _run_vlm_pipeline(
             client,
             structural_path=structural_path,
@@ -293,6 +297,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             crop_offset=float_offset,
             source_w=source_w,
             source_h=source_h,
+            vlm_model=vlm_model,
         )
 
         _update_task(db, task, progress=62, step=2, step_label=PARSE_STEPS[2])
@@ -308,7 +313,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         _notify_task(task)
 
         parse_meta = ParseMeta(
-            vlm_model=settings.house_diy_omlx_vlm_model,
+            vlm_model=vlm_model,
             vlm_steps=vlm_calls,
             cv_wall_quality=wall_extract.quality,
             wall_source="polygon",
@@ -326,6 +331,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 source_w=source_w,
                 source_h=source_h,
                 retry_hint=retry_hint,
+                vlm_model=vlm_model,
             )
             vlm_result = retry_result
             draft = retry_draft

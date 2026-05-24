@@ -384,6 +384,7 @@ def run_multistep_vlm_parse(
     img_h: int,
     plan_type: PlanType,
     retry_hint: str | None = None,
+    vlm_model: str | None = None,
 ) -> tuple[VlmParseResult, int]:
     """
     分步 VLM 解析：Step1 房间名单 + Step2 分批 polygon
@@ -395,6 +396,7 @@ def run_multistep_vlm_parse(
     @param img_h 图片高
     @param plan_type 图源类型
     @param retry_hint 质检失败后的修正提示
+    @param vlm_model oMLX VLM alias，None 时使用客户端默认
     @return (合并后的 VLM 解析结果, VLM 调用次数)
     """
     vlm_calls = 0
@@ -402,6 +404,7 @@ def run_multistep_vlm_parse(
         load_step1_prompt_for_image(img_w, img_h, plan_type),
         image_base64,
         mime_type=mime_type,
+        model=vlm_model,
     )
     vlm_calls += 1
     room_list = parse_vlm_room_list(step1_text)
@@ -414,6 +417,7 @@ def run_multistep_vlm_parse(
             load_step2_prompt_for_image(img_w, img_h, plan_type, batch, retry_hint),
             image_base64,
             mime_type=mime_type,
+            model=vlm_model,
         )
         vlm_calls += 1
         polygon_rooms.extend(parse_vlm_polygon_batch(step2_text))

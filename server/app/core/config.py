@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     house_diy_omlx_api_key: str = ""
     house_diy_omlx_llm_model: str = "house-llm"
     house_diy_omlx_vlm_model: str = "house-vlm"
+    house_diy_omlx_vlm_model_cad: str = ""
+    house_diy_omlx_vlm_model_marketing: str = ""
     house_diy_omlx_embed_model: str = "house-embed"
+    house_diy_seg_enabled: bool = False
+    house_diy_seg_model_path: str = ""
     house_diy_comfyui_base_url: str = "http://127.0.0.1:8188"
     house_diy_comfyui_render_timeout: float = 900.0
     house_diy_comfyui_depth_strength: float = 0.65
@@ -49,6 +53,19 @@ class Settings(BaseSettings):
 
     def comfyui_web_url(self) -> str:
         return self.house_diy_comfyui_base_url.rstrip("/")
+
+    def vlm_model_for_plan_type(self, plan_type: str) -> str:
+        """
+        按图源类型选择 VLM alias，未配置专用 alias 时回退默认 house-vlm
+
+        @param plan_type 图源类型 cad_lineart / marketing_color / unknown
+        @return oMLX VLM 模型 alias
+        """
+        if plan_type == "cad_lineart" and self.house_diy_omlx_vlm_model_cad:
+            return self.house_diy_omlx_vlm_model_cad
+        if plan_type == "marketing_color" and self.house_diy_omlx_vlm_model_marketing:
+            return self.house_diy_omlx_vlm_model_marketing
+        return self.house_diy_omlx_vlm_model
 
 
 settings = Settings()
