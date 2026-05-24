@@ -1,9 +1,11 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from app.services.floorplan.plan_classifier import PlanType
 
 from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus, Opening, OpeningType, Point, Room, Wall
 
@@ -61,21 +63,30 @@ class VlmParseResult(BaseModel):
     openings: list[VlmOpening] = Field(default_factory=list)
 
 
-def load_prompt() -> str:
-    prompt_path = Path(__file__).resolve().parents[3] / "prompts" / "floorplan_vlm.txt"
+def load_prompt(plan_type: PlanType = "cad_lineart") -> str:
+    prompts_dir = Path(__file__).resolve().parents[3] / "prompts"
+    if plan_type == "marketing_color":
+        prompt_path = prompts_dir / "floorplan_vlm_marketing.txt"
+    else:
+        prompt_path = prompts_dir / "floorplan_vlm.txt"
     return prompt_path.read_text(encoding="utf-8")
 
 
-def load_prompt_for_image(width: int, height: int) -> str:
+def load_prompt_for_image(
+    width: int,
+    height: int,
+    plan_type: PlanType = "cad_lineart",
+) -> str:
     """
     加载 VLM 提示词并附加当前图片尺寸约束
 
     @param width 图片宽度（像素）
     @param height 图片高度（像素）
+    @param plan_type 户型图源类型
     @return 完整提示词
     """
     return (
-        f"{load_prompt()}\n\n"
+        f"{load_prompt(plan_type)}\n\n"
         f"当前图片尺寸：宽 {width}px，高 {height}px。"
         f"polygon 顶点 x∈[0,{width}]，y∈[0,{height}]。"
     )

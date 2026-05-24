@@ -7,9 +7,12 @@ from datetime import datetime, timezone
 from shapely.geometry import Polygon
 
 from app.schemas.floorplan import FloorPlanModel, FloorPlanValidation, Point, Room, ValidationIssue
+from app.services.floorplan.plan_classifier import PlanType
 
-IOU_WARN_THRESHOLD = 0.15
-IOU_ERROR_THRESHOLD = 0.30
+IOU_WARN_CAD = 0.15
+IOU_ERROR_CAD = 0.30
+IOU_WARN_MARKETING = 0.10
+IOU_ERROR_MARKETING = 0.25
 AREA_MISMATCH_RATIO = 0.30
 COORD_ROUND = 1
 
@@ -76,14 +79,21 @@ def _geometric_area_sqm(room: Room, scale: float | None) -> float | None:
     return round(pixel_area * meters_per_pixel * meters_per_pixel, 2)
 
 
-def _detect_overlaps(rooms: list[Room]) -> list[ValidationIssue]:
+def _iou_thresholds(plan_type: PlanType | None) -> tuple[float, float]:
+    if plan_type == "marketing_color":
+        return IOU_WARN_MARKETING, IOU_ERROR_MARKETING
+    return IOU_WARN_CAD, IOU_ERROR_CAD
+
+
+def _detect_overlaps(rooms: list[Room], plan_type: PlanType | None) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
+    warn_threshold, error_threshold = _iou_thresholds(plan_type)
     for index, room_a in enumerate(rooms):
         for room_b in rooms[index + 1 :]:
             iou = polygon_iou(room_a.polygon, room_b.polygon)
-            if iou <= IOU_WARN_THRESHOLD:
+            if iou <= warn_threshold:
                 continue
-            severity = "error" if iou >= IOU_ERROR_THRESHOLD else "warning"
+            severity = "error" if iou >= error_threshold else "warning"
             issues.append(
                 ValidationIssue(
                     code="ROOM_OVERLAP",
@@ -180,16 +190,18 @@ def _resolve_level(issues: list[ValidationIssue]) -> str:
     return "pass"
 
 
-def validate_floorplan(model: FloorPlanModel) -> FloorPlanValidation:
+def validate_floorplan(model: FloorPlanModel, plan_type: PlanType | None = None) -> FloorPlanValidation:
     """
     对 FloorPlanModel 执行质检
 
     @param model 户型模型
+    @param plan_type 图源类型，影响重叠阈值
     @return 质检结果
     """
+    effective_plan_type = plan_type or model.plan_type
     issues: list[ValidationIssue] = []
     issues.extend(_detect_duplicate_polygons(model.rooms))
-    issues.extend(_detect_overlaps(model.rooms))
+    issues.extend(_detect_overlaps(model.rooms, effective_plan_type))
     issues.extend(_detect_area_mismatch(model.rooms, model.scale))
     issues.extend(_detect_all_rectangles(model.rooms))
     issues.extend(_detect_low_room_count(model.rooms))

@@ -31,6 +31,8 @@ async def test_upload_and_get_floorplan(client, data_dir):
     assert body["status"] == "draft"
     assert body["source_image"] == "source.png"
     assert body["estimated_area"] == 89.0
+    assert body["plan_type"] in {"cad_lineart", "marketing_color", "unknown"}
+    assert "plan_type_label" in body
 
     detail = await client.get(f"/api/v1/projects/{project_id}/floorplan")
     assert detail.status_code == 200

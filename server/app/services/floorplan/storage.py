@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.schemas.floorplan import FloorPlanModel, FloorPlanStatus
+from app.services.floorplan.plan_classifier import classify_floorplan_image
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf"}
 SOURCE_FILENAME = "source.png"
@@ -53,12 +54,15 @@ def save_upload(
     source_path = project_dir / target_name
     source_path.write_bytes(content)
 
+    classification = classify_floorplan_image(source_path)
+
     draft = FloorPlanModel(
         scale=None,
         walls=[],
         rooms=[],
         openings=[],
         status=FloorPlanStatus.DRAFT,
+        plan_type=classification.plan_type,
     )
     save_floorplan(project_id, draft)
 
@@ -66,6 +70,9 @@ def save_upload(
         "source_image": target_name,
         "original_filename": original_filename,
         "estimated_area": estimated_area,
+        "plan_type": classification.plan_type,
+        "has_watermark": classification.has_watermark,
+        "plan_type_message": classification.message,
     }
     (project_dir / META_FILENAME).write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),

@@ -10,6 +10,7 @@ from app.schemas.floorplan import FloorPlanModel, FloorPlanRead, FloorPlanStatus
 from app.schemas.task import TaskRead
 from app.services.floorplan import storage
 from app.services.floorplan.floorplan_service import prepare_floorplan_for_save
+from app.services.floorplan.plan_classifier import classify_floorplan_image, plan_type_label
 from app.services.floorplan.parser_cv import compute_scale_pixels_per_meter
 from app.services.floorplan.parser_validate import validation_blocks_confirm
 from app.services.floorplan.task_parse import create_floorplan_parse_task, start_floorplan_parse
@@ -45,14 +46,21 @@ def _to_read_model(project_id: int) -> FloorPlanRead:
     if not source_width or not source_height:
         source_width, source_height = storage.get_source_dimensions(project_id)
 
+    effective_plan_type = model.plan_type or meta.get("plan_type")
+    payload = model.model_dump()
+    payload["plan_type"] = effective_plan_type
+
     return FloorPlanRead(
-        **model.model_dump(),
+        **payload,
         source_image=source_image,
         original_filename=meta.get("original_filename"),
         estimated_area=meta.get("estimated_area"),
         source_url=source_url,
         source_width=source_width,
         source_height=source_height,
+        has_watermark=meta.get("has_watermark"),
+        plan_type_label=plan_type_label(effective_plan_type) if effective_plan_type else None,
+        plan_type_message=meta.get("plan_type_message"),
     )
 
 

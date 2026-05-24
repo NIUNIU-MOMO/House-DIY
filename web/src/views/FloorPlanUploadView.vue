@@ -26,6 +26,19 @@ const hasExistingImage = computed(
 
 const canSubmit = computed(() => Boolean(selectedFile.value) && !uploading.value)
 
+const planTypeHint = computed(() => {
+  const fp = existingFloorplan.value
+  if (!fp?.plan_type_label) {
+    return null
+  }
+  return {
+    label: fp.plan_type_label,
+    message: fp.plan_type_message ?? '',
+    isMarketing: fp.plan_type === 'marketing_color',
+    hasWatermark: Boolean(fp.has_watermark),
+  }
+})
+
 function setFile(file: File | null) {
   if (previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
@@ -121,6 +134,20 @@ onBeforeUnmount(() => {
 
       <h2>上传标准平面图</h2>
       <p class="muted">支持开发商户型图 PNG / PDF · 建议带尺寸标注</p>
+
+      <div v-if="planTypeHint" class="plan-type-banner" :class="{ marketing: planTypeHint.isMarketing }">
+        <p class="plan-type-title">已识别：{{ planTypeHint.label }}</p>
+        <p class="plan-type-message">{{ planTypeHint.message }}</p>
+        <p v-if="planTypeHint.hasWatermark" class="plan-type-tip">
+          中央水印将在解析时忽略，建议使用墙体线稿而非色块边界校对。
+        </p>
+        <p v-else-if="planTypeHint.isMarketing" class="plan-type-tip">
+          彩色户型图将按墙体围合解析，请在校对页重点检查房间轮廓是否贴墙。
+        </p>
+        <p v-else class="plan-type-tip">
+          线稿模式优先识别墙体与标注，适合 CAD 导出图。
+        </p>
+      </div>
 
       <div v-if="hasExistingImage && !selectedFile" class="existing-banner">
         <p>已上传户型图，可直接继续解析，或重新选择文件覆盖。</p>
@@ -227,6 +254,35 @@ onBeforeUnmount(() => {
   padding: 0.65rem 0.85rem;
   margin-bottom: 1rem;
   font-size: 0.85rem;
+}
+
+.plan-type-banner {
+  background: #eef3f8;
+  border: 1px solid #d0dce8;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.plan-type-banner.marketing {
+  background: #f5f0e8;
+  border-color: #e0d4c0;
+}
+
+.plan-type-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.plan-type-message {
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.plan-type-tip {
+  font-size: 0.8rem;
+  color: #5a6a7a;
 }
 
 .existing-preview {

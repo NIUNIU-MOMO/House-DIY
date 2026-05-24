@@ -3,6 +3,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.services.floorplan.plan_classifier import PlanType
+
 
 class FloorPlanStatus(str, Enum):
     DRAFT = "draft"
@@ -66,6 +68,7 @@ class FloorPlanModel(BaseModel):
     rooms: list[Room] = Field(default_factory=list)
     openings: list[Opening] = Field(default_factory=list)
     status: FloorPlanStatus = FloorPlanStatus.DRAFT
+    plan_type: PlanType | None = None
     validation: FloorPlanValidation | None = None
     parse_meta: ParseMeta | None = None
 
@@ -83,6 +86,9 @@ class FloorPlanRead(FloorPlanModel):
     source_url: str | None = None
     source_width: int | None = None
     source_height: int | None = None
+    has_watermark: bool | None = None
+    plan_type_label: str | None = None
+    plan_type_message: str | None = None
 
 
 class ScaleRequest(BaseModel):

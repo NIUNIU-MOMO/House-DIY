@@ -32,6 +32,8 @@ export interface Project {
   cover_image_url?: string | null
 }
 
+export type PlanType = 'cad_lineart' | 'marketing_color' | 'unknown'
+
 export interface FloorPlan {
   status: string
   scale: number | null
@@ -42,6 +44,10 @@ export interface FloorPlan {
   source_url?: string | null
   original_filename?: string | null
   estimated_area?: number | null
+  plan_type?: PlanType | null
+  has_watermark?: boolean | null
+  plan_type_label?: string | null
+  plan_type_message?: string | null
 }
 
 export interface Task {

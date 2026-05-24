@@ -58,6 +58,23 @@ def test_validate_detects_overlap_as_error():
     assert any(issue.code == "ROOM_OVERLAP" for issue in result.issues)
 
 
+def test_validate_marketing_stricter_overlap_threshold():
+    model = FloorPlanModel(
+        plan_type="marketing_color",
+        rooms=[
+            _room("r1", "客厅", 0, 0, 200, 200, 10.0),
+            _room("r2", "卧室", 100, 100, 200, 200, 8.0),
+        ],
+    )
+    marketing_result = validate_floorplan(model)
+    cad_result = validate_floorplan(model.model_copy(update={"plan_type": "cad_lineart"}))
+
+    marketing_overlap = [issue for issue in marketing_result.issues if issue.code == "ROOM_OVERLAP"]
+    cad_overlap = [issue for issue in cad_result.issues if issue.code == "ROOM_OVERLAP"]
+    assert marketing_overlap
+    assert not cad_overlap
+
+
 def test_validate_area_mismatch_warning_when_scale_set():
     model = FloorPlanModel(
         scale=100.0,

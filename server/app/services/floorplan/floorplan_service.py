@@ -33,6 +33,6 @@ def prepare_floorplan_for_save(
     @return 可写入磁盘的模型
     """
     synced = sync_walls_from_rooms(model)
-    validation = validate_floorplan(synced)
+    validation = validate_floorplan(synced, plan_type=synced.plan_type)
     meta = parse_meta if parse_meta is not None else synced.parse_meta
     return synced.model_copy(update={"validation": validation, "parse_meta": meta})
