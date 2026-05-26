@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 PDF 户型图解析：矢量检测 + 栅格化，供后续图像链路使用
 """

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -33,6 +35,7 @@ from app.services.floorplan.seg_hint import build_seg_hint_payload, format_seg_h
 from app.services.floorplan.pdf_text_hint import build_pdf_text_hint
 from app.services.floorplan.pdf_vector_types import PdfTextBlock, VECTOR_STRUCTURAL_FILENAME
 from app.services.omlx_client import OmlxClient, get_omlx_client
+from app.services.stale_guard import mark_annotation_stale
 from app.services.task_control import ParseTaskCancelled, parse_task_control
 
 PARSE_STEPS = [
@@ -586,6 +589,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
 
         ensure_running()
         storage.save_floorplan(task.project_id, prepared)
+        mark_annotation_stale(task.project_id)
         project.status = ProjectStatus.REVIEW
         db.add(project)
         db.commit()

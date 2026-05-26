@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 户型 FloorPlanModel 解析结果质检
 """

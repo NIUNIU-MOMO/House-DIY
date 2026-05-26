@@ -30,6 +30,17 @@ const modelsSaving = ref(false)
 const modelsError = ref<string | null>(null)
 const modelsSaved = ref(false)
 
+const storageSettings = ref({
+  output_root: '',
+  effective_output_root: '',
+  writable: false,
+  writable_error: null as string | null,
+})
+const storageLoading = ref(false)
+const storageSaving = ref(false)
+const storageError = ref<string | null>(null)
+const storageSaved = ref(false)
+
 const modelFields: Array<{ key: keyof OmlxModelConfig; label: string; hint: string; required?: boolean }> = [
   { key: 'llm_model', label: 'LLM', hint: '文本生成，如 house-llm', required: true },
   { key: 'vlm_model', label: 'VLM（默认）', hint: '户型解析默认模型，如 house-vlm-pro', required: true },
@@ -126,9 +137,44 @@ async function saveModelConfig() {
   }
 }
 
+async function loadStorageSettings() {
+  storageLoading.value = true
+  storageError.value = null
+  storageSaved.value = false
+  try {
+    const response = await api.getStorageSettings()
+    storageSettings.value = {
+      ...response,
+      writable_error: response.writable_error ?? null,
+    }
+  } catch (err) {
+    storageError.value = err instanceof Error ? err.message : '加载输出目录配置失败'
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+async function saveStorageSettings() {
+  storageSaving.value = true
+  storageError.value = null
+  storageSaved.value = false
+  try {
+    const saved = await api.updateStorageSettings(storageSettings.value.output_root.trim())
+    storageSettings.value = {
+      ...saved,
+      writable_error: saved.writable_error ?? null,
+    }
+    storageSaved.value = true
+  } catch (err) {
+    storageError.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    storageSaving.value = false
+  }
+}
+
 async function refreshAll() {
   restartError.value = null
-  await Promise.all([loadHealth(), loadModelConfig()])
+  await Promise.all([loadHealth(), loadModelConfig(), loadStorageSettings()])
 }
 
 async function restartComponent(serviceKey: string) {
@@ -170,7 +216,7 @@ onMounted(refreshAll)
         <button
           type="button"
           class="icon-refresh-btn"
-          :disabled="loading || modelsLoading"
+          :disabled="loading || modelsLoading || storageLoading"
           title="刷新状态"
           aria-label="刷新状态"
           @click="refreshAll()"
@@ -284,6 +330,51 @@ onMounted(refreshAll)
               <option v-for="option in modelOptions(field.key)" :key="option" :value="option" />
             </datalist>
             <p class="field-hint muted">{{ field.hint }}</p>
+          </div>
+        </form>
+      </section>
+
+      <section class="model-config-panel">
+        <div class="model-config-head">
+          <div>
+            <h2>项目输出目录</h2>
+            <p class="muted">
+              户型源图、标注快照与设计方案将写入此目录；留空则使用服务端默认路径。
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="storageLoading || storageSaving"
+            @click="saveStorageSettings"
+          >
+            {{ storageSaving ? '保存中…' : '保存路径' }}
+          </button>
+        </div>
+
+        <p v-if="storageError" class="error-text">{{ storageError }}</p>
+        <p v-else-if="storageSaved" class="success-text">输出目录已保存</p>
+        <p v-else-if="storageSettings.writable" class="success-text">当前路径可写</p>
+        <p v-else-if="!storageLoading && storageSettings.writable_error" class="warn-text">
+          {{ storageSettings.writable_error }}
+        </p>
+
+        <div v-if="storageLoading" class="empty-state">
+          <p>正在加载输出目录配置…</p>
+        </div>
+
+        <form v-else class="model-config-form" @submit.prevent="saveStorageSettings">
+          <div class="form-row">
+            <label for="output-root">输出根目录</label>
+            <input
+              id="output-root"
+              v-model="storageSettings.output_root"
+              class="input"
+              placeholder="/path/to/house-diy-output"
+            />
+            <p class="field-hint muted">
+              生效路径：{{ storageSettings.effective_output_root || '（未配置）' }}
+            </p>
           </div>
         </form>
       </section>

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from app.schemas.knowledge import (

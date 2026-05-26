@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
@@ -5,7 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project, ProjectMaxStep, ProjectStatus
 from app.schemas.floorplan import FloorPlanModel, FloorPlanRead, FloorPlanStatus, ScaleRequest
 from app.schemas.task import TaskRead
 from app.services.floorplan import storage
@@ -14,6 +17,8 @@ from app.services.floorplan.plan_classifier import classify_floorplan_image, pla
 from app.services.floorplan.parser_cv import compute_scale_pixels_per_meter
 from app.services.floorplan.parser_validate import validation_blocks_confirm
 from app.services.floorplan.task_parse import create_floorplan_parse_task, start_floorplan_parse, task_to_read
+from app.services.project_progress import bump_max_step_db
+from app.services.stale_guard import clear_annotation_stale
 
 router = APIRouter(prefix="/projects/{project_id}/floorplan", tags=["floorplan"])
 
@@ -61,7 +66,20 @@ def _to_read_model(project_id: int) -> FloorPlanRead:
         has_watermark=meta.get("has_watermark"),
         plan_type_label=plan_type_label(effective_plan_type) if effective_plan_type else None,
         plan_type_message=meta.get("plan_type_message"),
+        annotation_stale=bool(meta.get("annotation_stale")),
     )
+
+
+def _save_annotation(project_id: int, payload: FloorPlanModel, db: Session) -> FloorPlanRead:
+    project = _get_project_or_404(project_id, db)
+    if not storage.has_floorplan(project_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floorplan not found")
+
+    prepared = prepare_floorplan_for_save(payload)
+    prepared = prepared.model_copy(update={"status": FloorPlanStatus.DRAFT})
+    storage.save_floorplan(project_id, prepared)
+    bump_max_step_db(db, project, ProjectMaxStep.ANNOTATE)
+    return _to_read_model(project_id)
 
 
 @router.get("", response_model=FloorPlanRead)
@@ -92,11 +110,54 @@ async def upload_floorplan(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    bump_max_step_db(db, project, ProjectMaxStep.PARSE)
+
     if name and name.strip():
         project.name = name.strip()
         db.add(project)
         db.commit()
         db.refresh(project)
+
+    return _to_read_model(project_id)
+
+
+@router.put("/annotation", response_model=FloorPlanRead)
+def save_floorplan_annotation(
+    project_id: int,
+    payload: FloorPlanModel,
+    db: Session = Depends(get_db),
+):
+    return _save_annotation(project_id, payload, db)
+
+
+@router.post("/confirm", response_model=FloorPlanRead)
+def confirm_floorplan(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    project = _get_project_or_404(project_id, db)
+    model = storage.load_floorplan(project_id)
+    if model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floorplan not found")
+
+    prepared = prepare_floorplan_for_save(model)
+    if validation_blocks_confirm(prepared.validation):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "户型质检未通过，请修正后再确认",
+                "validation": prepared.validation.model_dump() if prepared.validation else None,
+            },
+        )
+
+    confirmed = prepared.model_copy(update={"status": FloorPlanStatus.CONFIRMED})
+    storage.save_floorplan(project_id, confirmed)
+    clear_annotation_stale(project_id)
+
+    project.status = ProjectStatus.DESIGNING
+    project.annotation_confirmed_at = datetime.now(timezone.utc)
+    db.add(project)
+    db.commit()
 
     return _to_read_model(project_id)
 
@@ -107,29 +168,15 @@ def update_floorplan(
     payload: FloorPlanModel,
     db: Session = Depends(get_db),
 ):
-    project = _get_project_or_404(project_id, db)
-    if not storage.has_floorplan(project_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Floorplan not found")
-
-    prepared = prepare_floorplan_for_save(payload)
+    """
+    兼容旧客户端：非 confirmed 请求等同保存标注
+    """
     if payload.status == FloorPlanStatus.CONFIRMED:
-        if validation_blocks_confirm(prepared.validation):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "message": "户型质检未通过，请修正后再确认",
-                    "validation": prepared.validation.model_dump() if prepared.validation else None,
-                },
-            )
-        prepared = prepared.model_copy(update={"status": FloorPlanStatus.CONFIRMED})
-
-    storage.save_floorplan(project_id, prepared)
-    if prepared.status == FloorPlanStatus.CONFIRMED:
-        project.status = ProjectStatus.DESIGNING
-        db.add(project)
-        db.commit()
-
-    return _to_read_model(project_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请使用 POST /floorplan/confirm 确认标注",
+        )
+    return _save_annotation(project_id, payload, db)
 
 
 @router.post("/scale", response_model=FloorPlanRead)

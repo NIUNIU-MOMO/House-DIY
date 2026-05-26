@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import Annotated, Literal
 
@@ -95,6 +97,7 @@ class FloorPlanRead(FloorPlanModel):
     has_watermark: bool | None = None
     plan_type_label: str | None = None
     plan_type_message: str | None = None
+    annotation_stale: bool = False
 
 
 class ScaleRequest(BaseModel):

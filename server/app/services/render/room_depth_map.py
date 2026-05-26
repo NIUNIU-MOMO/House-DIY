@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 从户型与家具布局生成房间深度控制图，供 FLUX Depth ControlNet 使用。
 """

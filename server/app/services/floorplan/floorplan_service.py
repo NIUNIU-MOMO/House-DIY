@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 户型存储与保存前处理
 """

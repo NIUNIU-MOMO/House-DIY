@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 房间/墙体 segmentation 辅助模块（M3）
 

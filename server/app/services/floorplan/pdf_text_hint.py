@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 PDF 矢量文字块 → VLM Step1 hint
 """

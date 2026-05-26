@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.schemas.floorplan import FloorPlanModel, Point, Room, Wall
 from app.services.floorplan.parser_validate import (
     validate_floorplan,

@@ -14,6 +14,8 @@ from app.api.floorplan import router as floorplan_router
 from app.api.health import router as health_router
 from app.api.knowledge import router as knowledge_router
 from app.api.projects import router as projects_router
+from app.api.schemes import router as schemes_router
+from app.api.settings import router as settings_router
 from app.api.ws import router as ws_router
 from app.core.config import settings
 from app.core.database import init_db
@@ -60,6 +62,8 @@ app.include_router(design_refine_router, prefix="/api/v1")
 app.include_router(renders_router, prefix="/api/v1")
 app.include_router(scene_router, prefix="/api/v1")
 app.include_router(knowledge_router, prefix="/api/v1")
+app.include_router(schemes_router, prefix="/api/v1")
+app.include_router(settings_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
 
 _assets_dir = Path(__file__).resolve().parents[2].parent / "assets"

@@ -16,6 +16,10 @@ def data_dir(tmp_path, monkeypatch):
         "app.services.floorplan.storage.settings.house_diy_projects_dir",
         str(tmp_path),
     )
+    monkeypatch.setattr(
+        "app.services.settings_storage.resolve_output_root",
+        lambda env_fallback=None: tmp_path,
+    )
     return tmp_path
 
 
@@ -23,10 +27,20 @@ def data_dir(tmp_path, monkeypatch):
 async def test_create_and_list_projects(client):
     create = await client.post("/api/v1/projects", json={"name": "望京三期 89㎡"})
     assert create.status_code == 201
-    pid = create.json()["id"]
+    body = create.json()
+    pid = body["id"]
+    assert body["max_step"] == "upload"
+    assert body["active_scheme_id"] is None
     listing = await client.get("/api/v1/projects")
     assert listing.status_code == 200
     assert any(p["id"] == pid for p in listing.json())
+
+
+@pytest.mark.asyncio
+async def test_project_has_max_step_default_upload(client):
+    create = await client.post("/api/v1/projects", json={"name": "默认进度"})
+    assert create.status_code == 201
+    assert create.json()["max_step"] == "upload"
 
 
 @pytest.mark.asyncio

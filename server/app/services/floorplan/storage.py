@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import shutil
 from pathlib import Path
@@ -16,7 +18,7 @@ META_FILENAME = "meta.json"
 
 
 def get_projects_root() -> Path:
-    return Path(settings.house_diy_projects_dir).resolve()
+    return settings.output_root()
 
 
 def get_project_dir(project_id: int) -> Path:

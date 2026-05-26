@@ -164,14 +164,14 @@ onMounted(async () => {
       <div class="loader-card">
         <template v-if="parseCompleted">
           <h2>解析已完成</h2>
-          <p class="muted">可前往「校对」查看结果，或重新解析覆盖当前数据</p>
+          <p class="muted">可前往「标注」查看结果，或重新解析覆盖当前数据</p>
           <div class="revisit-actions">
             <button
               type="button"
               class="btn primary"
               @click="router.push({ name: 'floorplan-editor', params: { id: projectId } })"
             >
-              前往校对 →
+              前往标注 →
             </button>
             <button type="button" class="btn ghost" :disabled="starting" @click="startParse">
               重新解析

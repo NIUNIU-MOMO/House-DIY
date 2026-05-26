@@ -6,10 +6,30 @@ export const mockProject = {
   id: PROJECT_ID,
   name: 'E2E 样本',
   status: 'delivered',
+  max_step: 'preview',
+  active_scheme_id: 'scheme-a',
+  annotation_confirmed_at: '2026-01-01T00:00:00Z',
   created_at: '2026-01-01T00:00:00',
   updated_at: '2026-01-01T00:00:00',
   cover_image_url: `/api/v1/projects/${PROJECT_ID}/renders/r1/image`,
 }
+
+export const mockStorageSettings = {
+  output_root: '',
+  effective_output_root: '/tmp/house-diy-output',
+  writable: true,
+  writable_error: null,
+}
+
+export const mockSchemes = [
+  {
+    id: 'scheme-a',
+    name: '方案 A',
+    status: 'ready',
+    created_at: '2026-01-01T00:00:00',
+    updated_at: '2026-01-01T00:00:00',
+  },
+]
 
 export const mockFloorplan = {
   status: 'confirmed',
@@ -191,6 +211,19 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
     }
     return route.fulfill({ json: mockOmlxModels })
   })
+  await page.route('**/api/v1/settings/storage', (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON() as { output_root?: string }
+      return route.fulfill({
+        json: {
+          ...mockStorageSettings,
+          output_root: body.output_root ?? mockStorageSettings.output_root,
+          effective_output_root: body.output_root || mockStorageSettings.effective_output_root,
+        },
+      })
+    }
+    return route.fulfill({ json: mockStorageSettings })
+  })
   await page.route('**/api/v1/health/restart/**', (route) =>
     route.fulfill({
       json: {
@@ -225,6 +258,18 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
   await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan`, (route) =>
     route.fulfill({ json: mockFloorplan }),
   )
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/schemes`, (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ json: mockSchemes })
+    }
+    return route.continue()
+  })
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/schemes/*/spec`, (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ json: mockDesignSpec })
+    }
+    return route.continue()
+  })
   await page.route(`**/api/v1/projects/${PROJECT_ID}/design/spec`, (route) => {
     if (route.request().method() === 'GET') {
       return route.fulfill({ json: mockDesignSpec })
@@ -247,26 +292,11 @@ export async function installCoreMocks(page: Page, options?: { projects?: unknow
 
 export async function installEditorMocks(page: Page) {
   await installCoreMocks(page, {
-    projects: [{ ...mockProject, status: 'review', name: 'E2E 校对样本' }],
+    projects: [{ ...mockProject, status: 'review', max_step: 'annotate', name: 'E2E 标注样本' }],
   })
-  await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan`, (route) => {
-    const method = route.request().method()
-    if (method === 'GET') {
-      return route.fulfill({ json: mockFloorplanDraftError })
-    }
-    if (method === 'PUT') {
-      const body = route.request().postDataJSON() as { status?: string }
-      if (body.status === 'confirmed') {
-        return route.fulfill({
-          status: 422,
-          json: {
-            detail: {
-              message: '户型质检未通过，请修正后再确认',
-              validation: mockFloorplanDraftError.validation,
-            },
-          },
-        })
-      }
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan/annotation`, (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
       return route.fulfill({
         json: {
           ...mockFloorplanDraftError,
@@ -277,11 +307,28 @@ export async function installEditorMocks(page: Page) {
     }
     return route.continue()
   })
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan/confirm`, (route) =>
+    route.fulfill({
+      status: 422,
+      json: {
+        detail: {
+          message: '户型质检未通过，请修正后再确认',
+          validation: mockFloorplanDraftError.validation,
+        },
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/floorplan`, (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ json: mockFloorplanDraftError })
+    }
+    return route.continue()
+  })
 }
 
 export async function installParseMocks(page: Page) {
   await installCoreMocks(page, {
-    projects: [{ ...mockProject, status: 'parsing' }],
+    projects: [{ ...mockProject, status: 'parsing', max_step: 'parse' }],
   })
   await page.route(`**/api/v1/projects/${PROJECT_ID}/tasks/*`, (route) =>
     route.fulfill({ json: mockTaskDone }),
@@ -290,7 +337,7 @@ export async function installParseMocks(page: Page) {
 
 export async function installGenerateMocks(page: Page) {
   await installCoreMocks(page, {
-    projects: [{ ...mockProject, status: 'designing' }],
+    projects: [{ ...mockProject, status: 'designing', max_step: 'design' }],
   })
   await page.route(`**/api/v1/projects/${PROJECT_ID}/tasks/*`, (route) =>
     route.fulfill({ json: mockTaskRunning }),

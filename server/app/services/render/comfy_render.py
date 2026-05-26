@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 
 import hashlib
@@ -41,13 +43,14 @@ def _should_skip_existing(
     project_id: int,
     room: RoomDesignSpec,
     skip_existing: bool,
+    scheme_id: str | None = None,
 ) -> bool:
     if not skip_existing:
         return False
     workflow_name = resolve_render_workflow_name(room.render2d.controlnet)
-    manifest = load_manifest(project_id)
+    manifest = load_manifest(project_id, scheme_id)
     existing = next((item for item in manifest.rooms if item.room_id == room.id), None)
-    if existing is None or get_render_path(project_id, room.id) is None:
+    if existing is None or get_render_path(project_id, room.id, scheme_id) is None:
         return False
     return existing.workflow == workflow_name
 
@@ -60,6 +63,7 @@ def render_room(
     placeholder_png: bytes | None = None,
     on_poll: Callable[[float, float], None] | None = None,
     skip_existing: bool = True,
+    scheme_id: str | None = None,
 ) -> RenderRecord:
     """
     渲染单个房间效果图
@@ -74,8 +78,8 @@ def render_room(
     @return 渲染记录
     """
     workflow_name = resolve_render_workflow_name(room.render2d.controlnet)
-    if _should_skip_existing(project_id, room, skip_existing) and placeholder_png is None:
-        manifest = load_manifest(project_id)
+    if _should_skip_existing(project_id, room, skip_existing, scheme_id) and placeholder_png is None:
+        manifest = load_manifest(project_id, scheme_id)
         existing = next((item for item in manifest.rooms if item.room_id == room.id), None)
         if existing is not None:
             return existing
@@ -90,7 +94,7 @@ def render_room(
             negative=room.render2d.negative,
             workflow=workflow_name,
         )
-        upsert_render(project_id, record, placeholder_png)
+        upsert_render(project_id, record, placeholder_png, scheme_id=scheme_id)
         return record
 
     client = comfy_client or ComfyClient()
@@ -101,7 +105,7 @@ def render_room(
     if workflow_name == WORKFLOW_DEPTH:
         if floorplan is None:
             raise ValueError(f"floorplan required for layout_depth render of room {room.id}")
-        depth_path = get_renders_dir(project_id) / "depth" / f"{room.id}.png"
+        depth_path = get_renders_dir(project_id, scheme_id) / "depth" / f"{room.id}.png"
         depth_bytes = save_room_depth_map(floorplan, room.id, depth_path, room_spec=room)
         upload_name = f"house-diy-p{project_id}-{room.id}-depth.png"
         controlnet_image_name = client.upload_image(depth_bytes, upload_name)
@@ -132,5 +136,5 @@ def render_room(
         negative=room.render2d.negative,
         workflow=workflow_name,
     )
-    upsert_render(project_id, record, image_bytes)
+    upsert_render(project_id, record, image_bytes, scheme_id=scheme_id)
     return record

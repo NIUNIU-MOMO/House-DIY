@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     house_diy_upload_dir: str = "./data/uploads"
     house_diy_output_dir: str = "./data/output"
     house_diy_projects_dir: str = "./data/projects"
+    house_diy_output_root: str = ""
+
+    def output_root(self) -> Path:
+        """
+        有效输出根目录：settings.local.json > HOUSE_DIY_OUTPUT_ROOT > projects_dir
+
+        @return 输出根目录绝对路径
+        """
+        from app.services.settings_storage import resolve_output_root
+
+        env_fallback = self.house_diy_output_root or self.house_diy_projects_dir
+        return resolve_output_root(env_fallback)
 
     def vault_path(self) -> Path:
         return Path(self.house_diy_vault_path).expanduser()

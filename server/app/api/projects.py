@@ -13,14 +13,7 @@ def _project_to_read(project: Project) -> ProjectRead:
     cover_image_url = None
     if project.status == ProjectStatus.DELIVERED:
         cover_image_url = resolve_cover_image_url(project.id)
-    return ProjectRead(
-        id=project.id,
-        name=project.name,
-        status=project.status,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-        cover_image_url=cover_image_url,
-    )
+    return ProjectRead.model_validate(project).model_copy(update={"cover_image_url": cover_image_url})
 
 
 @router.get("", response_model=list[ProjectRead])

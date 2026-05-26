@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, toRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import FloorPlanSvg from './FloorPlanSvg.vue'
 import { useFloorPlanCanvas } from './useCanvas'
@@ -8,6 +8,8 @@ import { DEFAULT_ROOM_TYPE, ROOM_TYPE_GROUPS, type RoomTypeKey } from '@/constan
 const props = defineProps<{
   projectId: number
 }>()
+
+const dirty = defineModel<boolean>('dirty', { default: false })
 
 const projectId = toRef(props, 'projectId')
 
@@ -23,6 +25,7 @@ const {
   loading,
   saving,
   error,
+  isDirty,
   load,
   save,
   selectRoom,
@@ -32,6 +35,8 @@ const {
   applyScale,
   updateRoomName,
   updateRoomVertex,
+  moveRoomEdge,
+  addRoomAtPoint,
   roomLabel,
   confirmFloorplan,
   validationLevel,
@@ -46,6 +51,12 @@ const {
   deleteSelectedRoom,
   canDeleteRoom,
 } = useFloorPlanCanvas(projectId)
+
+watch(isDirty, (value) => {
+  dirty.value = value
+})
+
+const contextMenu = ref<{ x: number; y: number; point: { x: number; y: number } } | null>(null)
 
 const pendingRoomType = ref<RoomTypeKey>(DEFAULT_ROOM_TYPE)
 
@@ -128,6 +139,22 @@ function onCanvasClick(point: { x: number; y: number }) {
 
 function beginAddRoom() {
   startPlacement(pendingRoomType.value)
+}
+
+function onContextMenu(payload: { point: { x: number; y: number }; clientX: number; clientY: number }) {
+  contextMenu.value = { x: payload.clientX, y: payload.clientY, point: payload.point }
+}
+
+function closeContextMenu() {
+  contextMenu.value = null
+}
+
+function addRoomFromContext(typeKey: RoomTypeKey) {
+  if (!contextMenu.value) {
+    return
+  }
+  addRoomAtPoint(typeKey, contextMenu.value.point)
+  contextMenu.value = null
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -270,8 +297,10 @@ onUnmounted(() => {
           :placement-active="isPlacementActive"
           @canvas-click="onCanvasClick"
           @background-click="openPreview"
+          @context-menu="onContextMenu"
           @room-select="selectRoom"
           @vertex-move="({ roomId, vertexIndex, point }) => updateRoomVertex(roomId, vertexIndex, point)"
+          @edge-move="({ roomId, edgeIndex, delta }) => moveRoomEdge(roomId, edgeIndex, delta)"
         />
         <span class="anno" @click="openPreview">
           <template v-if="isPlacementActive">放置模式：点击画布确定新房间中心，Esc 或「取消」退出</template>
@@ -365,7 +394,7 @@ onUnmounted(() => {
         >
           + 新增房间
         </button>
-        <p class="tiny muted">选择类型后，在画布上点击中心位置放置默认矩形，再拖拽顶点微调</p>
+        <p class="tiny muted">选择类型后，在画布上右键或点击中心位置放置默认矩形，再拖拽顶点/边线微调</p>
       </div>
 
       <hr />
@@ -414,6 +443,35 @@ onUnmounted(() => {
         </p>
       </div>
     </aside>
+    <div
+      v-if="contextMenu"
+      class="room-context-menu"
+      :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
+      @click.stop
+    >
+      <p class="menu-title">新增房间</p>
+      <button
+        v-for="group in ROOM_TYPE_GROUPS"
+        :key="group.group"
+        type="button"
+        class="menu-group"
+        disabled
+      >
+        {{ group.group }}
+      </button>
+      <template v-for="group in ROOM_TYPE_GROUPS" :key="`${group.group}-opts`">
+        <button
+          v-for="option in group.options"
+          :key="option.key"
+          type="button"
+          class="menu-item"
+          @click="addRoomFromContext(option.key)"
+        >
+          {{ option.label }}
+        </button>
+      </template>
+      <button type="button" class="menu-cancel" @click="closeContextMenu">取消</button>
+    </div>
   </div>
   </div>
 </template>
@@ -696,5 +754,61 @@ onUnmounted(() => {
 .image-preview-foot {
   padding: 0.55rem 1rem;
   border-top: 1px solid #333;
+}
+
+.room-context-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 0.35rem 0;
+}
+
+.menu-title {
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 0.35rem 0.65rem;
+}
+
+.menu-group {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #f5f0e8;
+  color: var(--muted);
+  font-size: 0.68rem;
+  padding: 0.25rem 0.65rem;
+  cursor: default;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #f0ebe3;
+}
+
+.menu-cancel {
+  display: block;
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
 }
 </style>

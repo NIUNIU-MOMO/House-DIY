@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 组件重启：调用 scripts/restart-*.sh
 """

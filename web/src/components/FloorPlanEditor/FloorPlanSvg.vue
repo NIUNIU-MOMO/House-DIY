@@ -41,10 +41,13 @@ const emit = defineEmits<{
   backgroundClick: []
   roomSelect: [roomId: string]
   vertexMove: [payload: { roomId: string; vertexIndex: number; point: FloorPoint }]
+  edgeMove: [payload: { roomId: string; edgeIndex: number; delta: FloorPoint }]
+  contextMenu: [payload: { point: FloorPoint; clientX: number; clientY: number }]
 }>()
 
 const svgRef = ref<SVGSVGElement | null>(null)
 const dragging = ref<{ roomId: string; vertexIndex: number } | null>(null)
+const edgeDragging = ref<{ roomId: string; edgeIndex: number; last: FloorPoint } | null>(null)
 
 const viewBox = computed(() => computeViewBox(props.floorplan))
 const wallStroke = computed(() => (props.floorplan.walls.length ? 3 : 2))
@@ -87,8 +90,12 @@ function roomStrokeWidth(roomId: string) {
   return isSelected(roomId) ? 3 : 1.5
 }
 
+function edgeMidpoint(a: FloorPoint, b: FloorPoint) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
 function onSvgClick(event: MouseEvent) {
-  if (!props.editable || !svgRef.value || dragging.value) {
+  if (!props.editable || !svgRef.value || dragging.value || edgeDragging.value) {
     return
   }
   if (props.placementActive) {
@@ -137,12 +144,59 @@ function onVertexPointerMove(event: PointerEvent) {
   })
 }
 
+function onSvgContextMenu(event: MouseEvent) {
+  if (!props.editable || !svgRef.value || props.editorMode !== 'select' || props.placementActive) {
+    return
+  }
+  event.preventDefault()
+  const point = svgPointFromEvent(event, svgRef.value)
+  emit('contextMenu', { point, clientX: event.clientX, clientY: event.clientY })
+}
+
+function onEdgePointerDown(event: PointerEvent, roomId: string, edgeIndex: number) {
+  if (!props.editable || props.editorMode !== 'select' || !svgRef.value) {
+    return
+  }
+  event.stopPropagation()
+  edgeDragging.value = {
+    roomId,
+    edgeIndex,
+    last: svgPointFromEvent(event, svgRef.value),
+  }
+  ;(event.target as Element).setPointerCapture(event.pointerId)
+}
+
+function onEdgePointerMove(event: PointerEvent) {
+  if (!edgeDragging.value || !svgRef.value) {
+    return
+  }
+  const current = svgPointFromEvent(event, svgRef.value)
+  const delta = {
+    x: current.x - edgeDragging.value.last.x,
+    y: current.y - edgeDragging.value.last.y,
+  }
+  edgeDragging.value.last = current
+  emit('edgeMove', {
+    roomId: edgeDragging.value.roomId,
+    edgeIndex: edgeDragging.value.edgeIndex,
+    delta,
+  })
+}
+
 function onVertexPointerUp(event: PointerEvent) {
   if (!dragging.value) {
     return
   }
   ;(event.target as Element).releasePointerCapture(event.pointerId)
   dragging.value = null
+}
+
+function onEdgePointerUp(event: PointerEvent) {
+  if (!edgeDragging.value) {
+    return
+  }
+  ;(event.target as Element).releasePointerCapture(event.pointerId)
+  edgeDragging.value = null
 }
 </script>
 
@@ -157,6 +211,7 @@ function onVertexPointerUp(event: PointerEvent) {
       'placement-active': editable && placementActive,
     }"
     @click="onSvgClick"
+    @contextmenu="onSvgContextMenu"
   >
     <rect
       v-if="!showUnderlay || !floorplan.source_url"
@@ -211,6 +266,19 @@ function onVertexPointerUp(event: PointerEvent) {
         @pointermove="onVertexPointerMove"
         @pointerup="onVertexPointerUp"
         @pointercancel="onVertexPointerUp"
+      />
+      <circle
+        v-for="(vertex, index) in selectedRoom.polygon"
+        :key="`${selectedRoom.id}-e-${index}`"
+        :cx="edgeMidpoint(vertex, selectedRoom.polygon[(index + 1) % selectedRoom.polygon.length]).x"
+        :cy="edgeMidpoint(vertex, selectedRoom.polygon[(index + 1) % selectedRoom.polygon.length]).y"
+        r="5"
+        class="edge-handle"
+        @click.stop
+        @pointerdown="onEdgePointerDown($event, selectedRoom.id, index)"
+        @pointermove="onEdgePointerMove"
+        @pointerup="onEdgePointerUp"
+        @pointercancel="onEdgePointerUp"
       />
     </g>
     <g v-if="scaleMarkers.length" class="scale-markers">
@@ -287,6 +355,13 @@ function onVertexPointerUp(event: PointerEvent) {
 
 .room-hit {
   cursor: pointer;
+}
+
+.edge-handle {
+  fill: #2c4a3e;
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: move;
 }
 
 .vertex-handle {

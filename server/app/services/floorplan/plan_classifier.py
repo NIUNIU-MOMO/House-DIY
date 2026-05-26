@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 户型图源分类：CAD 线稿 / 开发商彩色 / 未知
 """

@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { useUnsavedGuardConsumer } from '@/composables/useUnsavedGuard'
 import {
   PROJECT_STEPS,
   isStepReachable,
@@ -17,6 +18,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const confirmLeave = useUnsavedGuardConsumer()
 const maxCompletedIndex = ref(stepIndex(props.current))
 
 async function loadProgress() {
@@ -30,7 +32,7 @@ function stepClass(key: ProjectStep) {
   if (isStepReachable(key, maxCompletedIndex.value)) {
     return 'done'
   }
-  return ''
+  return 'pending'
 }
 
 function canGoTo(key: ProjectStep) {
@@ -40,8 +42,11 @@ function canGoTo(key: ProjectStep) {
   return isStepReachable(key, maxCompletedIndex.value)
 }
 
-function goToStep(key: ProjectStep) {
-  if (!canGoTo(key)) {
+async function goToStep(key: ProjectStep) {
+  if (!canGoTo(key) || key === props.current) {
+    return
+  }
+  if (!(await confirmLeave())) {
     return
   }
   const step = PROJECT_STEPS[stepIndex(key)]
@@ -97,13 +102,18 @@ watch(() => props.projectId, loadProgress)
 }
 
 .step-chip.active {
-  background: var(--accent-2);
-  color: #fff;
+  background: #5c4a1e;
+  color: #f0c14b;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .step-chip.active:hover {
   filter: brightness(1.05);
+}
+
+.step-chip.pending {
+  opacity: 0.65;
 }
 
 .step-chip:disabled {

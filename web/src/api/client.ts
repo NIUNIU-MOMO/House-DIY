@@ -45,13 +45,34 @@ export interface OmlxModelConfigResponse extends OmlxModelConfig {
   omlx_reachable: boolean
 }
 
+export type ProjectMaxStep = 'upload' | 'parse' | 'annotate' | 'design' | 'preview'
+
 export interface Project {
   id: number
   name: string
   status: string
+  max_step: ProjectMaxStep
+  active_scheme_id?: string | null
+  annotation_confirmed_at?: string | null
   created_at: string
   updated_at: string
   cover_image_url?: string | null
+}
+
+export interface SchemeMeta {
+  id: string
+  name: string
+  status: string
+  stale: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface StorageSettings {
+  output_root: string
+  effective_output_root: string
+  writable: boolean
+  writable_error?: string | null
 }
 
 export type PlanType = 'cad_lineart' | 'marketing_color' | 'unknown'
@@ -230,6 +251,49 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+  saveFloorplanAnnotation: (projectId: number, payload: Record<string, unknown>) =>
+    request<FloorPlan>(`/projects/${projectId}/floorplan/annotation`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  confirmFloorplan: (projectId: number) =>
+    request<FloorPlan>(`/projects/${projectId}/floorplan/confirm`, { method: 'POST' }),
+  getStorageSettings: () => request<StorageSettings>('/settings/storage'),
+  updateStorageSettings: (outputRoot: string) =>
+    request<StorageSettings>('/settings/storage', {
+      method: 'PUT',
+      body: JSON.stringify({ output_root: outputRoot }),
+    }),
+  listSchemes: (projectId: number) => request<SchemeMeta[]>(`/projects/${projectId}/schemes`),
+  createScheme: (projectId: number, name: string) =>
+    request<SchemeMeta>(`/projects/${projectId}/schemes`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  deleteScheme: (projectId: number, schemeId: string) =>
+    request<void>(`/projects/${projectId}/schemes/${schemeId}`, { method: 'DELETE' }),
+  getSchemeSpec: (projectId: number, schemeId: string) =>
+    request<Record<string, unknown>>(`/projects/${projectId}/schemes/${schemeId}/spec`),
+  saveSchemeSpec: (projectId: number, schemeId: string, spec: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/projects/${projectId}/schemes/${schemeId}/spec`, {
+      method: 'PUT',
+      body: JSON.stringify(spec),
+    }),
+  generateScheme2d: (
+    projectId: number,
+    schemeId: string,
+    payload: { brief: string; globalStyle?: string; useRag?: boolean },
+  ) =>
+    request<Task>(`/projects/${projectId}/schemes/${schemeId}/generate-2d`, {
+      method: 'POST',
+      body: JSON.stringify({
+        brief: payload.brief,
+        global_style: payload.globalStyle,
+        use_rag: payload.useRag ?? true,
+      }),
+    }),
+  generateScheme3d: (projectId: number, schemeId: string) =>
+    request<Task>(`/projects/${projectId}/schemes/${schemeId}/generate-3d`, { method: 'POST' }),
   setFloorplanScale: (
     projectId: number,
     pointA: { x: number; y: number },
@@ -262,40 +326,53 @@ export const api = {
       body: form,
     })
   },
-  getDesignSpec: (projectId: number) =>
-    request<Record<string, unknown>>(`/projects/${projectId}/design/spec`),
+  getDesignSpec: (projectId: number, schemeId?: string) => {
+    const query = schemeId ? `?scheme_id=${encodeURIComponent(schemeId)}` : ''
+    return request<Record<string, unknown>>(`/projects/${projectId}/design/spec${query}`)
+  },
   generateDesign: (
     projectId: number,
-    payload: { brief: string; globalStyle?: string; useRag?: boolean },
-  ) =>
-    request<Task>(`/projects/${projectId}/design/generate`, {
+    payload: { brief: string; globalStyle?: string; useRag?: boolean; schemeId?: string },
+  ) => {
+    const query = payload.schemeId ? `?scheme_id=${encodeURIComponent(payload.schemeId)}` : ''
+    return request<Task>(`/projects/${projectId}/design/generate${query}`, {
       method: 'POST',
       body: JSON.stringify({
         brief: payload.brief,
         global_style: payload.globalStyle,
         use_rag: payload.useRag ?? true,
       }),
-    }),
+    })
+  },
   listRenders: (projectId: number) =>
     request<{ rooms: RenderRecord[] }>(`/projects/${projectId}/renders`),
   regenerateRender: (projectId: number, roomId: string) =>
     request<Task>(`/projects/${projectId}/renders/${roomId}/regenerate`, { method: 'POST' }),
   getScene: (projectId: number) => request<ScenePackage>(`/projects/${projectId}/scene`),
-  previewRefine: (projectId: number, instruction: string) =>
-    request<RefinePreview>(`/projects/${projectId}/design/refine`, {
+  previewRefine: (projectId: number, instruction: string, schemeId?: string) => {
+    const query = schemeId ? `?scheme_id=${encodeURIComponent(schemeId)}` : ''
+    return request<RefinePreview>(`/projects/${projectId}/design/refine${query}`, {
       method: 'POST',
       body: JSON.stringify({ instruction }),
-    }),
+    })
+  },
   applyRefine: (
     projectId: number,
-    payload: { patch: Record<string, unknown>; affectedRoomIds: string[]; updateObsidian?: boolean },
-  ) =>
-    request<Task>(`/projects/${projectId}/design/refine/apply`, {
+    payload: {
+      patch: Record<string, unknown>
+      affectedRoomIds: string[]
+      updateObsidian?: boolean
+      schemeId?: string
+    },
+  ) => {
+    const query = payload.schemeId ? `?scheme_id=${encodeURIComponent(payload.schemeId)}` : ''
+    return request<Task>(`/projects/${projectId}/design/refine/apply${query}`, {
       method: 'POST',
       body: JSON.stringify({
         patch: payload.patch,
         affected_room_ids: payload.affectedRoomIds,
         update_obsidian: payload.updateObsidian ?? false,
       }),
-    }),
+    })
+  },
 }

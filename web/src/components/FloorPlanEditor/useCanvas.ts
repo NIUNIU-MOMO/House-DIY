@@ -27,6 +27,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
+  const isDirty = ref(false)
   const placementMode = ref<{ active: true; typeKey: RoomTypeKey } | null>(null)
   const { addRoomAt, removeRoom } = useManualRoom(floorplan)
 
@@ -86,17 +87,25 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     }
   }
 
+  function markDirty() {
+    isDirty.value = true
+  }
+
   async function save() {
     if (!floorplan.value) {
-      return
+      return false
     }
     saving.value = true
     error.value = null
     try {
-      const saved = await api.updateFloorplan(projectId.value, floorplan.value)
+      const payload = { ...floorplan.value, status: 'draft' }
+      const saved = await api.saveFloorplanAnnotation(projectId.value, payload)
       floorplan.value = saved as FloorPlanData
+      isDirty.value = false
+      return true
     } catch (e) {
       error.value = e instanceof Error ? e.message : '保存失败'
+      return false
     } finally {
       saving.value = false
     }
@@ -131,6 +140,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     if (roomId) {
       selectedRoomId.value = roomId
     }
+    markDirty()
   }
 
   function deleteSelectedRoom(): boolean {
@@ -147,6 +157,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
       return false
     }
     selectedRoomId.value = floorplan.value?.rooms[0]?.id ?? null
+    markDirty()
     return true
   }
 
@@ -206,6 +217,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     floorplan.value.rooms = floorplan.value.rooms.map((room) =>
       room.id === selectedRoom.value?.id ? { ...room, name } : room,
     )
+    markDirty()
   }
 
   function updateRoomVertex(roomId: string, vertexIndex: number, point: FloorPoint) {
@@ -222,6 +234,27 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
       )
       return { ...room, polygon }
     })
+    markDirty()
+  }
+
+  function moveRoomEdge(roomId: string, edgeIndex: number, delta: FloorPoint) {
+    if (!floorplan.value) {
+      return
+    }
+    floorplan.value.rooms = floorplan.value.rooms.map((room) => {
+      if (room.id !== roomId) {
+        return room
+      }
+      const nextIndex = (edgeIndex + 1) % room.polygon.length
+      const polygon = room.polygon.map((vertex, index) => {
+        if (index === edgeIndex || index === nextIndex) {
+          return { x: vertex.x + delta.x, y: vertex.y + delta.y }
+        }
+        return vertex
+      })
+      return { ...room, polygon }
+    })
+    markDirty()
   }
 
   function roomLabel(room: FloorRoom) {
@@ -237,6 +270,12 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     if (!floorplan.value || hasValidationError.value) {
       return
     }
+    if (isDirty.value) {
+      const saved = await save()
+      if (!saved) {
+        return
+      }
+    }
     if (validationLevel.value === 'warning') {
       const proceed = window.confirm('户型质检存在警告项，确认仍要继续进入设计吗？')
       if (!proceed) {
@@ -246,14 +285,22 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     saving.value = true
     error.value = null
     try {
-      const payload = { ...floorplan.value, status: 'confirmed' }
-      await api.updateFloorplan(projectId.value, payload)
+      await api.confirmFloorplan(projectId.value)
+      isDirty.value = false
       router.push({ name: 'design-studio', params: { id: projectId.value } })
     } catch (e) {
       error.value = e instanceof Error ? e.message : '确认失败'
     } finally {
       saving.value = false
     }
+  }
+
+  function addRoomAtPoint(typeKey: RoomTypeKey, point: FloorPoint) {
+    const roomId = addRoomAt(typeKey, point)
+    if (roomId) {
+      selectedRoomId.value = roomId
+    }
+    markDirty()
   }
 
   return {
@@ -272,12 +319,15 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     loading,
     saving,
     error: error,
+    isDirty,
+    markDirty,
     load,
     save,
     selectRoom,
     startPlacement,
     cancelPlacement,
     placeAt,
+    addRoomAtPoint,
     deleteSelectedRoom,
     canDeleteRoom,
     setEditorMode,
@@ -286,6 +336,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     applyScale,
     updateRoomName,
     updateRoomVertex,
+    moveRoomEdge,
     roomLabel,
     roomCenter,
     confirmFloorplan,

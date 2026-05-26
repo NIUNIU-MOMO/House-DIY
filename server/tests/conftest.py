@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.database import get_db
+from app.core.database import get_db, migrate_db
 from app.models.base import Base
 from app.main import app
 from app.models import project  # noqa: F401
@@ -22,6 +22,7 @@ def db_session():
     )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
+    migrate_db()
     session = TestingSessionLocal()
     try:
         yield session

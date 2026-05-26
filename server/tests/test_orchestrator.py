@@ -77,6 +77,10 @@ def data_dir(tmp_path, monkeypatch):
         "app.services.floorplan.storage.settings.house_diy_projects_dir",
         str(tmp_path),
     )
+    monkeypatch.setattr(
+        "app.services.settings_storage.resolve_output_root",
+        lambda env_fallback=None: tmp_path,
+    )
     return tmp_path
 
 
@@ -107,7 +111,8 @@ async def test_design_generate_pipeline(client, db_session, data_dir, vault_dir,
         f"/api/v1/projects/{project_id}/floorplan",
         files={"file": ("plan.png", MINI_PNG, "image/png")},
     )
-    await client.put(f"/api/v1/projects/{project_id}/floorplan", json=FLOORPLAN_DRAFT)
+    await client.put(f"/api/v1/projects/{project_id}/floorplan/annotation", json=FLOORPLAN_DRAFT)
+    await client.post(f"/api/v1/projects/{project_id}/floorplan/confirm")
 
     start = await client.post(
         f"/api/v1/projects/{project_id}/design/generate",

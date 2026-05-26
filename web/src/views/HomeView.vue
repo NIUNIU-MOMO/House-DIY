@@ -38,7 +38,7 @@ const filteredProjects = computed(() => {
 const statusLabel: Record<string, string> = {
   draft: '草稿',
   parsing: '解析中',
-  review: '校对',
+  review: '标注',
   designing: '设计中',
   delivered: '已完成',
 }
@@ -78,7 +78,7 @@ onMounted(() => {
           <option value="all">全部状态</option>
           <option value="delivered">已完成</option>
           <option value="designing">设计中</option>
-          <option value="review">校对</option>
+          <option value="review">标注</option>
           <option value="parsing">解析中</option>
           <option value="draft">草稿</option>
         </select>

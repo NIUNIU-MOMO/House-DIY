@@ -15,7 +15,7 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: '我的户型项目' })).toBeVisible()
     await expect(page.getByText('E2E 样本')).toBeVisible()
-    await expect(page.getByText('oMLX')).toBeVisible()
+    await expect(page.getByRole('link', { name: '系统服务状态' })).toBeVisible()
   })
 
   test('02 上传 — 页面与步骤条', async ({ page }) => {
@@ -31,14 +31,14 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByRole('heading', { name: /解析/ })).toBeVisible()
   })
 
-  test('04 校对 — 编辑器与确认按钮', async ({ page }) => {
+  test('04 标注 — 编辑器与确认按钮', async ({ page }) => {
     await installCoreMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/editor`)
-    await expect(page.getByText('3 校对')).toBeVisible()
+    await expect(page.getByText('3 标注')).toBeVisible()
     await expect(page.getByTestId('confirm-floorplan-btn')).toBeVisible()
   })
 
-  test('04b 校对 — 质检 error 时禁止确认', async ({ page }) => {
+  test('04b 标注 — 质检 error 时禁止确认', async ({ page }) => {
     await installEditorMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/editor`)
     await expect(page.getByText('户型质检 · 未通过')).toBeVisible()
@@ -46,11 +46,12 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByText('存在严重质检问题')).toBeVisible()
   })
 
-  test('05 设计 — Studio 与 RAG', async ({ page }) => {
+  test('05 设计 — Studio 与方案', async ({ page }) => {
     await installCoreMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/studio`)
     await expect(page.getByRole('heading', { name: '描述你的理想之家' })).toBeVisible()
-    await expect(page.getByText('北欧客厅案例')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '方案列表' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '生成 2D' })).toBeVisible()
   })
 
   test('06 生成 — 四步进度', async ({ page }) => {
@@ -60,10 +61,10 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByText('DesignSpec')).toBeVisible()
   })
 
-  test('08 交付总览', async ({ page }) => {
+  test('08 方案预览', async ({ page }) => {
     await installCoreMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/delivery`)
-    await expect(page.getByText('交付总览')).toBeVisible()
+    await expect(page.getByText('方案预览')).toBeVisible()
     await expect(page.getByText(mockProject.name)).toBeVisible()
   })
 
@@ -119,6 +120,7 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByRole('button', { name: '日志' }).first()).toBeVisible()
     await expect(page.getByRole('heading', { name: 'oMLX 模型 Alias' })).toBeVisible()
     await expect(page.getByLabel('VLM（默认）')).toHaveValue('house-vlm-pro')
+    await expect(page.getByRole('heading', { name: '项目输出目录' })).toBeVisible()
     await expect(page.getByText('Redis')).toBeVisible()
     await expect(page.getByRole('button', { name: '重启 ComfyUI' })).toBeVisible()
     await expect(page.getByRole('button', { name: '重启 oMLX' })).toHaveCount(0)

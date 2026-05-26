@@ -13,6 +13,10 @@ def data_dir(tmp_path, monkeypatch):
         "app.services.floorplan.storage.settings.house_diy_projects_dir",
         str(tmp_path),
     )
+    monkeypatch.setattr(
+        "app.services.settings_storage.resolve_output_root",
+        lambda env_fallback=None: tmp_path,
+    )
     return tmp_path
 
 
@@ -96,6 +100,95 @@ def _room_for_api(room_id: str, name: str, x: float, y: float, w: float, h: floa
 
 
 @pytest.mark.asyncio
+async def test_upload_bumps_max_step_to_parse(client, data_dir):
+    create = await client.post("/api/v1/projects", json={"name": "上传进度"})
+    project_id = create.json()["id"]
+    assert create.json()["max_step"] == "upload"
+
+    upload = await client.post(
+        f"/api/v1/projects/{project_id}/floorplan",
+        files={"file": ("plan.png", MINI_PNG, "image/png")},
+    )
+    assert upload.status_code == 201
+
+    project = await client.get(f"/api/v1/projects/{project_id}")
+    assert project.json()["max_step"] == "parse"
+
+
+@pytest.mark.asyncio
+async def test_save_annotation_bumps_max_step(client, data_dir):
+    create = await client.post("/api/v1/projects", json={"name": "标注进度"})
+    project_id = create.json()["id"]
+    await client.post(
+        f"/api/v1/projects/{project_id}/floorplan",
+        files={"file": ("plan.png", MINI_PNG, "image/png")},
+    )
+
+    saved = await client.put(
+        f"/api/v1/projects/{project_id}/floorplan/annotation",
+        json=FLOORPLAN_DRAFT,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["status"] == "draft"
+
+    project = await client.get(f"/api/v1/projects/{project_id}")
+    assert project.json()["max_step"] == "annotate"
+
+
+@pytest.mark.asyncio
+async def test_confirm_floorplan(client, data_dir):
+    create = await client.post("/api/v1/projects", json={"name": "确认测试"})
+    project_id = create.json()["id"]
+    await client.post(
+        f"/api/v1/projects/{project_id}/floorplan",
+        files={"file": ("plan.png", MINI_PNG, "image/png")},
+    )
+    await client.put(
+        f"/api/v1/projects/{project_id}/floorplan/annotation",
+        json={
+            **FLOORPLAN_DRAFT,
+            "rooms": [
+                {**FLOORPLAN_DRAFT["rooms"][0], "name": "客餐厅"},
+                _room_for_api("r2", "卧室", 400, 0, 200, 300, 8.0),
+            ],
+        },
+    )
+
+    confirmed = await client.post(f"/api/v1/projects/{project_id}/floorplan/confirm")
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "confirmed"
+    assert confirmed.json()["annotation_stale"] is False
+
+    project = await client.get(f"/api/v1/projects/{project_id}")
+    assert project.json()["status"] == "designing"
+    assert project.json()["max_step"] == "annotate"
+
+
+@pytest.mark.asyncio
+async def test_confirm_rejected_on_validation_error(client, data_dir):
+    create = await client.post("/api/v1/projects", json={"name": "质检拦截"})
+    project_id = create.json()["id"]
+    await client.post(
+        f"/api/v1/projects/{project_id}/floorplan",
+        files={"file": ("plan.png", MINI_PNG, "image/png")},
+    )
+
+    duplicate_room = {
+        "id": "r2",
+        "name": "卧室",
+        "polygon": FLOORPLAN_DRAFT["rooms"][0]["polygon"],
+        "area": 10.0,
+    }
+    payload = {
+        **FLOORPLAN_DRAFT,
+        "rooms": [FLOORPLAN_DRAFT["rooms"][0], duplicate_room],
+    }
+    await client.put(f"/api/v1/projects/{project_id}/floorplan/annotation", json=payload)
+    confirmed = await client.post(f"/api/v1/projects/{project_id}/floorplan/confirm")
+    assert confirmed.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_update_floorplan_confirmed(client, data_dir):
     create = await client.post("/api/v1/projects", json={"name": "校对测试"})
     project_id = create.json()["id"]
@@ -113,18 +206,12 @@ async def test_update_floorplan_confirmed(client, data_dir):
         ],
     }
     updated = await client.put(f"/api/v1/projects/{project_id}/floorplan", json=confirmed)
-    assert updated.status_code == 200
-    assert updated.json()["status"] == "confirmed"
-    assert updated.json()["rooms"][0]["name"] == "客餐厅"
-    assert updated.json()["validation"]["level"] == "pass"
-
-    project = await client.get(f"/api/v1/projects/{project_id}")
-    assert project.json()["status"] == "designing"
+    assert updated.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_update_floorplan_confirmed_rejected_on_validation_error(client, data_dir):
-    create = await client.post("/api/v1/projects", json={"name": "质检拦截"})
+    create = await client.post("/api/v1/projects", json={"name": "质检拦截旧接口"})
     project_id = create.json()["id"]
     await client.post(
         f"/api/v1/projects/{project_id}/floorplan",
@@ -143,7 +230,7 @@ async def test_update_floorplan_confirmed_rejected_on_validation_error(client, d
         "rooms": [FLOORPLAN_DRAFT["rooms"][0], duplicate_room],
     }
     updated = await client.put(f"/api/v1/projects/{project_id}/floorplan", json=payload)
-    assert updated.status_code == 422
+    assert updated.status_code == 400
 
 
 @pytest.mark.asyncio
