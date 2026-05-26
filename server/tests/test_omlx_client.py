@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.core.config import settings
 from app.services.omlx_client import get_omlx_client
 
 
@@ -59,6 +60,54 @@ def test_chat_vision_includes_image(mock_openai):
     call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
     user_content = call_kwargs["messages"][1]["content"]
     assert any(part.get("type") == "image_url" for part in user_content if isinstance(part, dict))
+
+
+def test_chat_vision_falls_back_on_500(mock_openai, monkeypatch):
+    from openai import APIStatusError
+
+    monkeypatch.setattr(settings, "house_diy_omlx_vlm_fallback_enabled", True)
+    get_omlx_client.cache_clear()
+    mock_openai.chat.completions.create.side_effect = [
+        APIStatusError(
+            "Internal server error",
+            response=MagicMock(status_code=500),
+            body={"error": {"message": "Internal server error"}},
+        ),
+        _chat_response('{"rooms": []}'),
+    ]
+
+    result = get_omlx_client().chat_vision(
+        "识别户型",
+        image_base64="abc123",
+        model="house-vlm-pro",
+    )
+
+    assert result == '{"rooms": []}'
+    assert mock_openai.chat.completions.create.call_count == 2
+    assert mock_openai.chat.completions.create.call_args_list[0].kwargs["model"] == "house-vlm-pro"
+    assert mock_openai.chat.completions.create.call_args_list[1].kwargs["model"] == "house-vlm"
+
+
+def test_chat_vision_no_fallback_when_disabled(mock_openai, monkeypatch):
+    from openai import APIStatusError
+
+    monkeypatch.setattr(settings, "house_diy_omlx_vlm_fallback_enabled", False)
+    get_omlx_client.cache_clear()
+    mock_openai.chat.completions.create.side_effect = APIStatusError(
+        "Internal server error",
+        response=MagicMock(status_code=500),
+        body={"error": {"message": "Internal server error"}},
+    )
+
+    with pytest.raises(APIStatusError):
+        get_omlx_client().chat_vision(
+            "识别户型",
+            image_base64="abc123",
+            model="house-vlm-pro",
+        )
+
+    assert mock_openai.chat.completions.create.call_count == 1
+    assert mock_openai.chat.completions.create.call_args.kwargs["model"] == "house-vlm-pro"
 
 
 def test_client_singleton(mock_openai):

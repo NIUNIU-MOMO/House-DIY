@@ -22,6 +22,7 @@ const props = withDefaults(
     editable?: boolean
     editorMode?: EditorMode
     scaleMarkers?: FloorPoint[]
+    placementActive?: boolean
   }>(),
   {
     selectedRoomId: null,
@@ -31,11 +32,13 @@ const props = withDefaults(
     editable: false,
     editorMode: 'select',
     scaleMarkers: () => [],
+    placementActive: false,
   },
 )
 
 const emit = defineEmits<{
   canvasClick: [point: FloorPoint]
+  backgroundClick: []
   roomSelect: [roomId: string]
   vertexMove: [payload: { roomId: string; vertexIndex: number; point: FloorPoint }]
 }>()
@@ -88,8 +91,16 @@ function onSvgClick(event: MouseEvent) {
   if (!props.editable || !svgRef.value || dragging.value) {
     return
   }
+  if (props.placementActive) {
+    emit('canvasClick', svgPointFromEvent(event, svgRef.value))
+    return
+  }
   if (props.editorMode === 'scale') {
     emit('canvasClick', svgPointFromEvent(event, svgRef.value))
+    return
+  }
+  if (props.editorMode === 'select') {
+    emit('backgroundClick')
   }
 }
 
@@ -140,7 +151,11 @@ function onVertexPointerUp(event: PointerEvent) {
     ref="svgRef"
     :viewBox="viewBox"
     class="floor-svg"
-    :class="{ interactive: editable, 'mode-scale': editable && editorMode === 'scale' }"
+    :class="{
+      interactive: editable,
+      'mode-scale': editable && editorMode === 'scale',
+      'placement-active': editable && placementActive,
+    }"
     @click="onSvgClick"
   >
     <rect
@@ -191,6 +206,7 @@ function onVertexPointerUp(event: PointerEvent) {
         :cy="vertex.y"
         r="6"
         class="vertex-handle"
+        @click.stop
         @pointerdown="onVertexPointerDown($event, selectedRoom.id, index)"
         @pointermove="onVertexPointerMove"
         @pointerup="onVertexPointerUp"
@@ -258,6 +274,10 @@ function onVertexPointerUp(event: PointerEvent) {
 }
 
 .floor-svg.interactive.mode-scale {
+  cursor: crosshair;
+}
+
+.floor-svg.interactive.placement-active {
   cursor: crosshair;
 }
 

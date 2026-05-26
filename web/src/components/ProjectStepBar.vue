@@ -13,6 +13,7 @@ import {
 const props = defineProps<{
   projectId: number
   current: ProjectStep
+  locked?: boolean
 }>()
 
 const router = useRouter()
@@ -33,6 +34,9 @@ function stepClass(key: ProjectStep) {
 }
 
 function canGoTo(key: ProjectStep) {
+  if (props.locked) {
+    return false
+  }
   return isStepReachable(key, maxCompletedIndex.value)
 }
 

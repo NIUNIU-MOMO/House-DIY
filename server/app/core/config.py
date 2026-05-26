@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     house_diy_omlx_api_key: str = ""
     house_diy_omlx_llm_model: str = "house-llm"
     house_diy_omlx_vlm_model: str = "house-vlm-pro"
+    house_diy_omlx_vlm_model_fallback: str = "house-vlm"
+    house_diy_omlx_vlm_fallback_enabled: bool = False
     house_diy_omlx_vlm_model_cad: str = ""
     house_diy_omlx_vlm_model_marketing: str = ""
     house_diy_omlx_embed_model: str = "house-embed"

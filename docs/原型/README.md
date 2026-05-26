@@ -2,6 +2,8 @@
 
 可交互 HTML 线框原型，与 `D:\IdeaProjects\House-DIY\prototype` 同源，用于对齐产品与 Vue 前端实现。
 
+**v2 流程重构原型（推荐评审）：** [v2/index.html](./v2/index.html) — 五步流程（上传 → 解析 → **标注** → 设计 → 预览）、绿/黄/灰步骤条、未保存拦截、输出目录设置。需求见 [11-流程重构需求.md](../11-流程重构需求.md)。
+
 **v1.1 更新：** 内置模拟数据与状态管理（`store.js`），支持完整主流程点击体验：新建项目 → 解析 → 校对 → 设计 → 生成 → 交付 → 微调；数据持久化至 `localStorage`。
 
 ## 打开方式
@@ -9,9 +11,13 @@
 **交互原型（推荐）**
 
 ```bash
-cd docs/原型
-python3 -m http.server 5500
-# 访问 http://127.0.0.1:5500/index.html
+# v2 流程重构（评审用）
+cd docs/原型/v2 && python3 -m http.server 5501
+# http://127.0.0.1:5501/index.html
+
+# v1 完整 13 屏
+cd docs/原型 && python3 -m http.server 5500
+# http://127.0.0.1:5500/index.html
 ```
 
 - 左侧切换 **13** 个界面；键盘 `←` `→` 切换上一屏/下一屏。

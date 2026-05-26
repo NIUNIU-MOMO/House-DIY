@@ -1,10 +1,12 @@
 import asyncio
 import base64
+import json
 import mimetypes
 import time
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import cv2
 from fastapi import WebSocket
@@ -31,6 +33,7 @@ from app.services.floorplan.seg_hint import build_seg_hint_payload, format_seg_h
 from app.services.floorplan.pdf_text_hint import build_pdf_text_hint
 from app.services.floorplan.pdf_vector_types import PdfTextBlock, VECTOR_STRUCTURAL_FILENAME
 from app.services.omlx_client import OmlxClient, get_omlx_client
+from app.services.task_control import ParseTaskCancelled, parse_task_control
 
 PARSE_STEPS = [
     "图像预处理与结构增强",
@@ -88,6 +91,71 @@ def _update_task(db: Session, task: Task, **fields: Any) -> Task:
     return task
 
 
+def _load_task_payload(task: Task) -> dict[str, Any]:
+    if not task.payload:
+        return {"logs": []}
+    try:
+        data = json.loads(task.payload)
+    except json.JSONDecodeError:
+        return {"logs": []}
+    if not isinstance(data, dict):
+        return {"logs": []}
+    logs = data.get("logs")
+    if not isinstance(logs, list):
+        data["logs"] = []
+    return data
+
+
+def _parse_task_logs(task: Task) -> list[str]:
+    logs = _load_task_payload(task).get("logs", [])
+    return [str(item) for item in logs]
+
+
+def _append_task_log(db: Session, task: Task, message: str, *, notify: bool = True) -> Task:
+    data = _load_task_payload(task)
+    logs = data.setdefault("logs", [])
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    logs.append(f"[{timestamp}] {message}")
+    if len(logs) > 200:
+        data["logs"] = logs[-200:]
+    task.payload = json.dumps(data, ensure_ascii=False)
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    if notify:
+        _notify_task(task)
+    return task
+
+
+def _ensure_parse_running(task_id: int) -> None:
+    parse_task_control.ensure_running(task_id)
+
+
+def _finalize_parse_cancel(db: Session, task: Task, *, message: str = "用户已取消解析") -> Task:
+    project = db.get(Project, task.project_id)
+    if project is not None and project.status == ProjectStatus.PARSING:
+        project.status = ProjectStatus.DRAFT
+        db.add(project)
+    _append_task_log(db, task, message, notify=False)
+    task = _update_task(
+        db,
+        task,
+        status=TaskStatus.CANCELLED,
+        error=message,
+    )
+    _notify_task(task)
+    return task
+
+
+def cancel_floorplan_parse_task(db: Session, task: Task) -> Task:
+    if task.type != TaskType.FLOORPLAN_PARSE:
+        raise ValueError("Not a floorplan parse task")
+    if task.status not in {TaskStatus.PENDING, TaskStatus.RUNNING}:
+        raise ValueError("Task is not running")
+    parse_task_control.request_cancel(task.id)
+    return _finalize_parse_cancel(db, task)
+
+
 def task_payload(task: Task) -> dict[str, Any]:
     return {
         "id": task.id,
@@ -98,7 +166,16 @@ def task_payload(task: Task) -> dict[str, Any]:
         "step": task.step,
         "step_label": task.step_label,
         "error": task.error,
+        "logs": _parse_task_logs(task),
     }
+
+
+def task_to_read(task: Task) -> "TaskRead":
+    from app.schemas.task import TaskRead
+
+    data = TaskRead.model_validate(task).model_dump()
+    data["logs"] = _parse_task_logs(task)
+    return TaskRead(**data)
 
 
 def _notify_task(task: Task) -> None:
@@ -113,6 +190,7 @@ def create_floorplan_parse_task(db: Session, project_id: int) -> Task:
         progress=0,
         step=0,
         step_label=PARSE_STEPS[0],
+        payload=json.dumps({"logs": []}, ensure_ascii=False),
     )
     db.add(task)
     db.commit()
@@ -243,6 +321,8 @@ def _run_vlm_pipeline(
     seg_hint: str | None = None,
     pdf_text_hint: str | None = None,
     vlm_model: str | None = None,
+    on_progress: Callable[[str], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
 ) -> tuple[Any, Any, int]:
     image = cv2.imread(structural_path)
     img_h, img_w = (image.shape[:2] if image is not None else (540, 720))
@@ -260,6 +340,17 @@ def _run_vlm_pipeline(
         seg_hint=seg_hint,
         pdf_text_hint=pdf_text_hint,
         vlm_model=vlm_model,
+        on_progress=on_progress,
+        cancel_check=cancel_check,
+        on_model_used=(
+            (lambda step, actual, configured=vlm_model: on_progress(
+                f"实际调用模型 {actual}（{step}）"
+                if actual == configured
+                else f"模型 {configured} 不可用，已回退至 {actual}（{step}）"
+            ))
+            if on_progress and vlm_model
+            else None
+        ),
     )
     offset_x, offset_y = crop_offset
     draft = merge_vlm_result(
@@ -274,10 +365,21 @@ def _run_vlm_pipeline(
 def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None) -> None:
     client = omlx_client or get_omlx_client()
     db = SessionLocal()
+    parse_task_control.register(task_id)
     try:
         task = db.get(Task, task_id)
         if task is None:
             return
+
+        def log(message: str) -> None:
+            nonlocal task
+            task = _append_task_log(db, task, message)
+
+        def ensure_running() -> None:
+            _ensure_parse_running(task_id)
+
+        def on_vlm_progress(message: str) -> None:
+            log(message)
 
         project = db.get(Project, task.project_id)
         if project is None:
@@ -297,6 +399,7 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
         db.add(project)
         db.commit()
 
+        log("开始解析任务，加载源图…")
         _update_task(
             db,
             task,
@@ -306,8 +409,10 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             step_label=PARSE_STEPS[0],
         )
         _notify_task(task)
+        ensure_running()
 
         classification = classify_floorplan_image(raster_path)
+        log(f"图源分类：{classification.plan_type}（{classification.message}）")
         storage.patch_meta(
             task.project_id,
             {
@@ -326,13 +431,17 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             structural_path = str(vector_structural)
             preprocess_meta = _vector_preprocess_meta(vector_structural, raster_meta=raster_meta)
             storage.patch_meta(task.project_id, preprocess_meta)
+            log("使用 PDF 矢量结构图，跳过栅格预处理")
         else:
+            log("执行图像预处理与结构增强…")
             structural_path, preprocess_meta = preprocess_image(
                 str(raster_path),
                 plan_type=plan_type,
                 has_watermark=classification.has_watermark,
             )
             storage.patch_meta(task.project_id, preprocess_meta)
+            log("图像预处理完成")
+        ensure_running()
         crop_offset = preprocess_meta.get("crop_offset", (0, 0))
         if isinstance(crop_offset, list):
             crop_offset = tuple(crop_offset)
@@ -354,17 +463,25 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 source_h, source_w = image.shape[:2]
 
         vlm_model = settings.vlm_model_for_plan_type(plan_type)
+        log(f"选用 VLM 模型：{vlm_model}")
         vlm_started = time.perf_counter()
 
         seg_hint_used = False
         seg_hint_text: str | None = None
         extracted_seg_regions: list = []
         if settings.seg_hint_active():
+            log("提取 Seg 区域 hint…")
             extracted_seg_regions = extract_room_regions(Path(structural_path))
             payload = build_seg_hint_payload(extracted_seg_regions)
             seg_hint_text = format_seg_hint_for_prompt(payload) or None
             seg_hint_used = seg_hint_text is not None
+            if seg_hint_used:
+                log(f"Seg hint 已生成，共 {len(extracted_seg_regions)} 个区域")
+            else:
+                log("Seg hint 未生成有效区域")
 
+        ensure_running()
+        log("开始 VLM 多步解析（Step1 房间列表 + Step2 分批轮廓）…")
         vlm_result, draft, vlm_calls = _run_vlm_pipeline(
             client,
             structural_path=structural_path,
@@ -375,21 +492,31 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             seg_hint=seg_hint_text,
             pdf_text_hint=pdf_text_hint,
             vlm_model=vlm_model,
+            on_progress=on_vlm_progress,
+            cancel_check=ensure_running,
         )
 
         vlm_duration_ms = int((time.perf_counter() - vlm_started) * 1000)
+        log(f"VLM 解析完成，共 {vlm_calls} 次调用，耗时 {vlm_duration_ms}ms，识别 {len(vlm_result.rooms)} 个房间")
+        ensure_running()
 
         _update_task(db, task, progress=62, step=2, step_label=PARSE_STEPS[2])
         _notify_task(task)
 
         _update_task(db, task, progress=72, step=3, step_label=PARSE_STEPS[3])
         _notify_task(task)
+        log("OpenCV 评估墙线质量…")
 
         wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
         wall_extract = _offset_wall_extract(wall_extract, float_offset[0], float_offset[1])
+        quality_label = (
+            f"{wall_extract.quality:.2f}" if wall_extract.quality is not None else "N/A"
+        )
+        log(f"墙线来源：{wall_extract.wall_source}，质量评分 {quality_label}")
 
         _update_task(db, task, progress=85, step=4, step_label=PARSE_STEPS[4])
         _notify_task(task)
+        log("生成草稿并执行质检…")
 
         seg_regions = 0
         seg_backend = "disabled"
@@ -421,6 +548,8 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
 
         retry_hint = build_validation_retry_hint(prepared.validation)
         if retry_hint is not None:
+            log("质检未通过，发起 VLM 重试…")
+            ensure_running()
             retry_started = time.perf_counter()
             retry_result, retry_draft, retry_calls = _run_vlm_pipeline(
                 client,
@@ -433,11 +562,15 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
                 seg_hint=seg_hint_text,
                 pdf_text_hint=pdf_text_hint,
                 vlm_model=vlm_model,
+                on_progress=on_vlm_progress,
+                cancel_check=ensure_running,
             )
             vlm_result = retry_result
             draft = retry_draft
             vlm_calls += retry_calls
-            vlm_duration_ms += int((time.perf_counter() - retry_started) * 1000)
+            retry_ms = int((time.perf_counter() - retry_started) * 1000)
+            log(f"VLM 重试完成，额外 {retry_calls} 次调用，耗时 {retry_ms}ms")
+            vlm_duration_ms += retry_ms
             wall_extract = extract_walls_with_meta(Path(structural_path), vlm_result)
             wall_extract = _offset_wall_extract(wall_extract, float_offset[0], float_offset[1])
             parse_meta = parse_meta.model_copy(
@@ -451,10 +584,12 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             )
             prepared = _append_cv_quality_info(prepared, wall_extract)
 
+        ensure_running()
         storage.save_floorplan(task.project_id, prepared)
         project.status = ProjectStatus.REVIEW
         db.add(project)
         db.commit()
+        log("解析完成，已保存草稿")
 
         _update_task(
             db,
@@ -466,12 +601,23 @@ def run_floorplan_parse_sync(task_id: int, omlx_client: OmlxClient | None = None
             error=None,
         )
         _notify_task(task)
+    except ParseTaskCancelled:
+        task = db.get(Task, task_id)
+        if task is not None and task.status != TaskStatus.CANCELLED:
+            _finalize_parse_cancel(db, task)
     except Exception as exc:
         task = db.get(Task, task_id)
-        if task is not None:
+        if task is not None and task.status not in {TaskStatus.CANCELLED}:
+            _append_task_log(db, task, f"解析失败：{exc}", notify=False)
             _update_task(db, task, status=TaskStatus.FAILED, error=str(exc))
             _notify_task(task)
+            project = db.get(Project, task.project_id)
+            if project is not None and project.status == ProjectStatus.PARSING:
+                project.status = ProjectStatus.DRAFT
+                db.add(project)
+                db.commit()
     finally:
+        parse_task_control.clear(task_id)
         db.close()
 
 

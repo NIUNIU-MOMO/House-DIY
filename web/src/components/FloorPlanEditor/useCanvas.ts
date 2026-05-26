@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 
 import { snapPointToWalls } from '@/utils/geometry'
 import { api } from '@/api/client'
+import { DEFAULT_ROOM_TYPE, type RoomTypeKey } from '@/constants/roomTypes'
+import { useManualRoom } from '@/components/FloorPlanEditor/useManualRoom'
 import {
   computeViewBox,
   polygonCentroid,
@@ -25,6 +27,8 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
+  const placementMode = ref<{ active: true; typeKey: RoomTypeKey } | null>(null)
+  const { addRoomAt, removeRoom } = useManualRoom(floorplan)
 
   const viewBox = computed(() =>
     floorplan.value ? computeViewBox(floorplan.value) : '0 0 400 300',
@@ -48,8 +52,18 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   const hasValidationError = computed(() => validationLevel.value === 'error')
 
   const canConfirm = computed(
-    () => Boolean(floorplan.value?.rooms.length) && !hasValidationError.value && !saving.value,
+    () =>
+      Boolean(floorplan.value?.rooms.length)
+      && !hasValidationError.value
+      && !saving.value
+      && !placementMode.value?.active,
   )
+
+  const canDeleteRoom = computed(
+    () => Boolean(selectedRoomId.value) && (floorplan.value?.rooms.length ?? 0) > 1 && !placementMode.value?.active,
+  )
+
+  const isPlacementActive = computed(() => Boolean(placementMode.value?.active))
 
   const scaleMarkers = computed(() => scalePoints.value.filter((point): point is FloorPoint => point != null))
 
@@ -89,16 +103,59 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   }
 
   function selectRoom(roomId: string) {
-    if (editorMode.value !== 'select') {
+    if (editorMode.value !== 'select' || placementMode.value?.active) {
       return
     }
     selectedRoomId.value = roomId
+  }
+
+  function startPlacement(typeKey: RoomTypeKey = DEFAULT_ROOM_TYPE) {
+    if (editorMode.value !== 'select') {
+      editorMode.value = 'select'
+      resetScalePoints()
+    }
+    placementMode.value = { active: true, typeKey }
+  }
+
+  function cancelPlacement() {
+    placementMode.value = null
+  }
+
+  function placeAt(point: FloorPoint) {
+    if (!placementMode.value?.active) {
+      return
+    }
+    const typeKey = placementMode.value.typeKey
+    const roomId = addRoomAt(typeKey, point)
+    placementMode.value = null
+    if (roomId) {
+      selectedRoomId.value = roomId
+    }
+  }
+
+  function deleteSelectedRoom(): boolean {
+    if (!selectedRoomId.value || !canDeleteRoom.value) {
+      return false
+    }
+    const roomId = selectedRoomId.value
+    const roomName = selectedRoom.value?.name ?? roomId
+    const proceed = window.confirm(`确定删除「${roomName}」？`)
+    if (!proceed) {
+      return false
+    }
+    if (!removeRoom(roomId)) {
+      return false
+    }
+    selectedRoomId.value = floorplan.value?.rooms[0]?.id ?? null
+    return true
   }
 
   function setEditorMode(mode: EditorMode) {
     editorMode.value = mode
     if (mode === 'select') {
       resetScalePoints()
+    } else {
+      cancelPlacement()
     }
   }
 
@@ -204,6 +261,8 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     selectedRoomId,
     selectedRoom,
     editorMode,
+    placementMode,
+    isPlacementActive,
     scalePoints,
     scaleDistanceM,
     scaleMarkers,
@@ -216,6 +275,11 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     load,
     save,
     selectRoom,
+    startPlacement,
+    cancelPlacement,
+    placeAt,
+    deleteSelectedRoom,
+    canDeleteRoom,
     setEditorMode,
     addScalePoint,
     resetScalePoints,

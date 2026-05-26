@@ -2,11 +2,12 @@ export interface Task {
   id: number
   project_id: number
   type: string
-  status: 'pending' | 'running' | 'done' | 'failed'
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
   progress: number
   step: number
   step_label: string
   error: string | null
+  logs?: string[]
 }
 
 export const PARSE_STEP_LABELS = [

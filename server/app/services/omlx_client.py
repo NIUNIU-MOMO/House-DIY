@@ -1,9 +1,13 @@
 from functools import lru_cache
+import logging
+from collections.abc import Callable
 from typing import Any
 
-from openai import OpenAI
+from openai import APIStatusError, OpenAI
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class OmlxClient:
@@ -14,9 +18,18 @@ class OmlxClient:
             base_url=settings.house_diy_omlx_base_url,
             api_key=settings.house_diy_omlx_api_key or "local",
         )
-        self.llm_model = settings.house_diy_omlx_llm_model
-        self.vlm_model = settings.house_diy_omlx_vlm_model
-        self.embed_model = settings.house_diy_omlx_embed_model
+
+    @property
+    def llm_model(self) -> str:
+        return settings.house_diy_omlx_llm_model
+
+    @property
+    def vlm_model(self) -> str:
+        return settings.house_diy_omlx_vlm_model
+
+    @property
+    def embed_model(self) -> str:
+        return settings.house_diy_omlx_embed_model
 
     def chat_text(
         self,
@@ -44,6 +57,7 @@ class OmlxClient:
         image_base64: str,
         mime_type: str = "image/png",
         model: str | None = None,
+        on_model_used: Callable[[str], None] | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -52,7 +66,8 @@ class OmlxClient:
         @param prompt 用户提示词
         @param image_base64 图片 base64 内容（不含 data: 前缀）
         @param mime_type 图片 MIME 类型
-        @param model 模型 alias，默认 house-vlm-pro
+        @param model 模型 alias，默认读取当前 settings 中的 VLM 配置
+        @param on_model_used 实际调用模型回调（含回退场景）
         @return 助手回复文本
         """
         messages = [
@@ -68,8 +83,41 @@ class OmlxClient:
                 ],
             },
         ]
+        primary = model or settings.house_diy_omlx_vlm_model
+        try:
+            result = self._vision_completion(messages, primary, **kwargs)
+            if on_model_used:
+                on_model_used(primary)
+            return result
+        except APIStatusError as exc:
+            fallback = settings.house_diy_omlx_vlm_model_fallback
+            can_fallback = (
+                settings.house_diy_omlx_vlm_fallback_enabled
+                and fallback
+                and primary != fallback
+                and exc.status_code >= 500
+            )
+            if not can_fallback:
+                raise
+            logger.warning(
+                "VLM model %s failed (%s), retrying with %s",
+                primary,
+                exc,
+                fallback,
+            )
+            result = self._vision_completion(messages, fallback, **kwargs)
+            if on_model_used:
+                on_model_used(fallback)
+            return result
+
+    def _vision_completion(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        **kwargs: Any,
+    ) -> str:
         response = self._client.chat.completions.create(
-            model=model or self.vlm_model,
+            model=model,
             messages=messages,
             **kwargs,
         )

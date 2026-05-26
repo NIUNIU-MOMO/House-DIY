@@ -76,11 +76,12 @@ export interface Task {
   id: number
   project_id: number
   type: string
-  status: 'pending' | 'running' | 'done' | 'failed'
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
   progress: number
   step: number
   step_label: string
   error: string | null
+  logs?: string[]
 }
 
 export interface RenderRecord {
@@ -222,6 +223,8 @@ export const api = {
     request<Task>(`/projects/${projectId}/floorplan/parse`, { method: 'POST' }),
   getTask: (projectId: number, taskId: number) =>
     request<Task>(`/projects/${projectId}/tasks/${taskId}`),
+  cancelTask: (projectId: number, taskId: number) =>
+    request<Task>(`/projects/${projectId}/tasks/${taskId}/cancel`, { method: 'POST' }),
   updateFloorplan: (projectId: number, payload: Record<string, unknown>) =>
     request<FloorPlan>(`/projects/${projectId}/floorplan`, {
       method: 'PUT',

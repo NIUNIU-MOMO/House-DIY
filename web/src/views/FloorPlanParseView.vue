@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
 import ProjectStepBar from '@/components/ProjectStepBar.vue'
-import StepBackButton from '@/components/StepBackButton.vue'
 import { api, type Task } from '@/api/client'
 import { useTaskWebSocket } from '@/composables/useTaskWebSocket'
 import { PARSE_STEP_LABELS } from '@/types/task'
@@ -17,9 +16,15 @@ const projectId = computed(() => Number(route.params.id))
 const task = ref<Task | null>(null)
 const error = ref<string | null>(null)
 const starting = ref(false)
+const cancelling = ref(false)
 const parseCompleted = ref(false)
+const logPanelRef = ref<HTMLElement | null>(null)
 
 const progress = computed(() => Math.round(task.value?.progress ?? 0))
+const isParseActive = computed(
+  () => task.value?.status === 'pending' || task.value?.status === 'running',
+)
+const taskLogs = computed(() => task.value?.logs ?? [])
 
 function stepClass(index: number) {
   if (!task.value) {
@@ -45,8 +50,18 @@ function stepIcon(index: number) {
   return '○'
 }
 
+function scrollLogsToBottom() {
+  nextTick(() => {
+    const panel = logPanelRef.value
+    if (panel) {
+      panel.scrollTop = panel.scrollHeight
+    }
+  })
+}
+
 function handleTaskUpdate(next: Task) {
   task.value = next
+  scrollLogsToBottom()
   if (next.status === 'done') {
     setTimeout(() => {
       router.push({ name: 'floorplan-editor', params: { id: projectId.value } })
@@ -54,6 +69,9 @@ function handleTaskUpdate(next: Task) {
   }
   if (next.status === 'failed') {
     error.value = next.error ?? '解析失败'
+  }
+  if (next.status === 'cancelled') {
+    router.replace({ name: 'floorplan-upload', params: { id: projectId.value } })
   }
 }
 
@@ -82,6 +100,24 @@ async function startParse() {
   }
 }
 
+async function cancelParse() {
+  if (!task.value || cancelling.value) {
+    return
+  }
+  cancelling.value = true
+  error.value = null
+  try {
+    const cancelled = await api.cancelTask(projectId.value, task.value.id)
+    handleTaskUpdate(cancelled)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '取消失败'
+  } finally {
+    cancelling.value = false
+  }
+}
+
+watch(taskLogs, scrollLogsToBottom)
+
 onMounted(async () => {
   const project = await api.getProject(projectId.value)
   const maxIdx = await resolveMaxCompletedStepIndex(projectId.value, project)
@@ -109,10 +145,21 @@ onMounted(async () => {
 
 <template>
   <div>
-    <AppHeader active="projects" />
+    <AppHeader active="projects" :locked="isParseActive" />
     <div class="ui-page narrow center parse-page">
-      <ProjectStepBar :project-id="projectId" current="parse" />
-      <StepBackButton :project-id="projectId" current="parse" />
+      <ProjectStepBar :project-id="projectId" current="parse" :locked="isParseActive" />
+
+      <div class="parse-toolbar">
+        <button
+          v-if="isParseActive"
+          type="button"
+          class="btn ghost sm cancel-btn"
+          :disabled="cancelling"
+          @click="cancelParse"
+        >
+          {{ cancelling ? '取消中…' : '取消解析' }}
+        </button>
+      </div>
 
       <div class="loader-card">
         <template v-if="parseCompleted">
@@ -146,6 +193,15 @@ onMounted(async () => {
             </li>
           </ul>
 
+          <div v-if="taskLogs.length > 0" class="log-panel-wrap">
+            <p class="log-title">处理日志</p>
+            <div ref="logPanelRef" class="log-panel" role="log" aria-live="polite">
+              <p v-for="(line, index) in taskLogs" :key="`${index}-${line}`" class="log-line">
+                {{ line }}
+              </p>
+            </div>
+          </div>
+
           <p v-if="error" class="error-text">{{ error }}</p>
           <button
             v-if="task?.status === 'failed'"
@@ -165,6 +221,22 @@ onMounted(async () => {
 <style scoped>
 .parse-page {
   padding-top: 2rem;
+}
+
+.parse-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.75rem;
+  min-height: 2rem;
+}
+
+.cancel-btn {
+  color: #d48f8f;
+  border-color: #5a3a3a;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background: rgba(212, 143, 143, 0.12);
 }
 
 .loader-card {
@@ -204,7 +276,7 @@ onMounted(async () => {
   list-style: none;
   text-align: left;
   max-width: 320px;
-  margin: 0 auto;
+  margin: 0 auto 1rem;
 }
 
 .task-list li {
@@ -219,6 +291,40 @@ onMounted(async () => {
 .task-list li.active {
   color: var(--accent);
   font-weight: 500;
+}
+
+.log-panel-wrap {
+  text-align: left;
+  max-width: 520px;
+  margin: 0 auto 1rem;
+}
+
+.log-title {
+  font-size: 0.78rem;
+  color: #888;
+  margin-bottom: 0.35rem;
+}
+
+.log-panel {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.log-line {
+  margin: 0;
+  color: #b8b8b8;
+  word-break: break-word;
+}
+
+.log-line + .log-line {
+  margin-top: 0.2rem;
 }
 
 .error-text {

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.task import TaskStatus, TaskType
 
@@ -16,6 +16,7 @@ class TaskRead(BaseModel):
     retry_count: int
     payload: str | None
     error: str | None
+    logs: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

@@ -1,7 +1,8 @@
 import json
 import re
+import time
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Callable, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -396,6 +397,9 @@ def run_multistep_vlm_parse(
     seg_hint: str | None = None,
     pdf_text_hint: str | None = None,
     vlm_model: str | None = None,
+    on_progress: Callable[[str], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
+    on_model_used: Callable[[str, str], None] | None = None,
 ) -> tuple[VlmParseResult, int]:
     """
     分步 VLM 解析：Step1 房间名单 + Step2 分批 polygon
@@ -410,22 +414,50 @@ def run_multistep_vlm_parse(
     @param seg_hint segmentation 区域 hint 文本（可选，仅 Step2）
     @param pdf_text_hint PDF 矢量文字 hint（可选，仅 Step1）
     @param vlm_model oMLX VLM alias，None 时使用客户端默认
+    @param on_progress 进度日志回调
+    @param cancel_check 取消检查，抛出 ParseTaskCancelled
     @return (合并后的 VLM 解析结果, VLM 调用次数)
     """
+    model_label = vlm_model or getattr(client, "vlm_model", "default")
     vlm_calls = 0
+
+    def notify_model_used(step: str, actual_model: str) -> None:
+        if on_model_used:
+            on_model_used(step, actual_model)
+        elif on_progress and actual_model != model_label:
+            on_progress(f"模型 {model_label} 不可用，已回退至 {actual_model}（{step}）")
+
+    if cancel_check:
+        cancel_check()
+    if on_progress:
+        on_progress(f"调用 VLM Step1（模型 {model_label}）识别房间列表…")
+    step1_started = time.perf_counter()
     step1_text = client.chat_vision(
         load_step1_prompt_for_image(img_w, img_h, plan_type, pdf_text_hint=pdf_text_hint),
         image_base64,
         mime_type=mime_type,
         model=vlm_model,
+        on_model_used=lambda actual: notify_model_used("Step1", actual),
     )
     vlm_calls += 1
     room_list = parse_vlm_room_list(step1_text)
     if not room_list.rooms:
         raise ValueError("VLM Step1 未识别到任何房间")
+    step1_ms = int((time.perf_counter() - step1_started) * 1000)
+    if on_progress:
+        on_progress(f"Step1 完成：识别 {len(room_list.rooms)} 个房间（{step1_ms}ms）")
 
     polygon_rooms: list[VlmRoomPolygon] = []
-    for batch in batch_room_stubs(room_list.rooms):
+    batches = batch_room_stubs(room_list.rooms)
+    for batch_index, batch in enumerate(batches, start=1):
+        if cancel_check:
+            cancel_check()
+        room_names = "、".join(room.name for room in batch)
+        if on_progress:
+            on_progress(
+                f"调用 VLM Step2 批次 {batch_index}/{len(batches)}（{room_names}）提取轮廓…"
+            )
+        batch_started = time.perf_counter()
         step2_text = client.chat_vision(
             load_step2_prompt_for_image(
                 img_w, img_h, plan_type, batch, retry_hint, seg_hint=seg_hint
@@ -433,9 +465,16 @@ def run_multistep_vlm_parse(
             image_base64,
             mime_type=mime_type,
             model=vlm_model,
+            on_model_used=lambda actual, batch_no=batch_index: notify_model_used(
+                f"Step2 批次 {batch_no}/{len(batches)}",
+                actual,
+            ),
         )
         vlm_calls += 1
         polygon_rooms.extend(parse_vlm_polygon_batch(step2_text))
+        batch_ms = int((time.perf_counter() - batch_started) * 1000)
+        if on_progress:
+            on_progress(f"Step2 批次 {batch_index}/{len(batches)} 完成（{batch_ms}ms）")
 
     return merge_multistep_vlm(room_list, polygon_rooms), vlm_calls
 

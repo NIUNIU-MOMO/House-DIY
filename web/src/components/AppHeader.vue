@@ -7,6 +7,7 @@ import { useAppStore } from '@/stores/app'
 
 defineProps<{
   active?: 'projects' | 'settings' | 'knowledge'
+  locked?: boolean
 }>()
 
 const appStore = useAppStore()
@@ -30,12 +31,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header class="ui-header">
-    <RouterLink to="/" class="ui-logo">House<span>DIY</span></RouterLink>
+  <header class="ui-header" :class="{ locked }">
+    <RouterLink to="/" class="ui-logo" :tabindex="locked ? -1 : undefined">House<span>DIY</span></RouterLink>
     <nav class="ui-tabs">
-      <RouterLink to="/" :class="{ active: active === 'projects' }">项目</RouterLink>
-      <RouterLink to="/knowledge" :class="{ active: active === 'knowledge' }">知识库</RouterLink>
-      <RouterLink to="/settings" :class="{ active: active === 'settings' }">系统监控</RouterLink>
+      <RouterLink to="/" :class="{ active: active === 'projects' }" :tabindex="locked ? -1 : undefined">项目</RouterLink>
+      <RouterLink to="/knowledge" :class="{ active: active === 'knowledge' }" :tabindex="locked ? -1 : undefined">知识库</RouterLink>
+      <RouterLink to="/settings" :class="{ active: active === 'settings' }" :tabindex="locked ? -1 : undefined">系统监控</RouterLink>
     </nav>
     <div class="ui-header-right">
       <RouterLink
@@ -43,6 +44,7 @@ onUnmounted(() => {
         class="status-led-link"
         :title="servicesStatusTitle"
         aria-label="系统服务状态"
+        :tabindex="locked ? -1 : undefined"
       >
         <span class="status-led" :class="servicesStatusLevel" />
       </RouterLink>
@@ -51,6 +53,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.ui-header.locked .ui-logo,
+.ui-header.locked .ui-tabs a,
+.ui-header.locked .status-led-link {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
 .status-led-link {
   display: flex;
   align-items: center;

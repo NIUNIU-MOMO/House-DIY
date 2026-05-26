@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, toRef } from 'vue'
 
 import FloorPlanSvg from './FloorPlanSvg.vue'
 import { useFloorPlanCanvas } from './useCanvas'
+import { DEFAULT_ROOM_TYPE, ROOM_TYPE_GROUPS, type RoomTypeKey } from '@/constants/roomTypes'
 
 const props = defineProps<{
   projectId: number
@@ -37,28 +38,107 @@ const {
   validationIssues,
   hasValidationError,
   canConfirm,
+  placementMode,
+  isPlacementActive,
+  startPlacement,
+  cancelPlacement,
+  placeAt,
+  deleteSelectedRoom,
+  canDeleteRoom,
 } = useFloorPlanCanvas(projectId)
 
+const pendingRoomType = ref<RoomTypeKey>(DEFAULT_ROOM_TYPE)
+
 const previewOpen = ref(false)
-const previewMode = ref<'original' | 'annotated'>('annotated')
+const previewShowOriginal = ref(true)
+const previewShowAnnotation = ref(true)
 const showUnderlay = ref(true)
 
 const canPreview = computed(() => Boolean(floorplan.value?.source_url))
 
+const previewTitle = computed(() => {
+  if (previewShowOriginal.value && previewShowAnnotation.value) {
+    return '原图 + 标注'
+  }
+  if (previewShowOriginal.value) {
+    return '户型原图'
+  }
+  if (previewShowAnnotation.value) {
+    return 'AI 标注'
+  }
+  return '户型大图'
+})
+
+const previewFootnote = computed(() => {
+  if (previewShowOriginal.value && previewShowAnnotation.value) {
+    return '原图底图与 AI 标注轮廓叠加显示，与校对页一致'
+  }
+  if (previewShowOriginal.value) {
+    return '仅显示上传的户型原图'
+  }
+  if (previewShowAnnotation.value) {
+    return '仅显示 AI 识别轮廓与房间名'
+  }
+  return '请至少勾选「原图」或「标注」'
+})
+
+const pendingRoomLabel = computed(() => {
+  for (const group of ROOM_TYPE_GROUPS) {
+    const option = group.options.find((item) => item.key === pendingRoomType.value)
+    if (option) {
+      return option.label
+    }
+  }
+  return '房间'
+})
+
 function openPreview() {
-  if (canPreview.value && editorMode.value === 'select') {
-    previewMode.value = 'annotated'
+  if (canPreview.value && editorMode.value === 'select' && !isPlacementActive.value) {
+    previewShowOriginal.value = true
+    previewShowAnnotation.value = true
     previewOpen.value = true
   }
+}
+
+function setPreviewShowOriginal(checked: boolean) {
+  if (!checked && !previewShowAnnotation.value) {
+    return
+  }
+  previewShowOriginal.value = checked
+}
+
+function setPreviewShowAnnotation(checked: boolean) {
+  if (!checked && !previewShowOriginal.value) {
+    return
+  }
+  previewShowAnnotation.value = checked
 }
 
 function closePreview() {
   previewOpen.value = false
 }
 
+function onCanvasClick(point: { x: number; y: number }) {
+  if (isPlacementActive.value) {
+    placeAt(point)
+    return
+  }
+  addScalePoint(point)
+}
+
+function beginAddRoom() {
+  startPlacement(pendingRoomType.value)
+}
+
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && previewOpen.value) {
-    closePreview()
+  if (event.key === 'Escape') {
+    if (previewOpen.value) {
+      closePreview()
+      return
+    }
+    if (isPlacementActive.value) {
+      cancelPlacement()
+    }
   }
 }
 
@@ -164,17 +244,20 @@ onUnmounted(() => {
     </aside>
 
     <div class="canvas-area">
+      <div v-if="isPlacementActive" class="placement-banner">
+        <span>在户型图上点击房间中心位置以放置「{{ pendingRoomLabel }}」</span>
+        <button type="button" class="btn sm ghost" @click="cancelPlacement">取消</button>
+      </div>
       <div class="canvas-toolbar">
-        <button type="button" class="btn sm ghost" :disabled="saving" @click="save">
+        <button type="button" class="btn sm ghost" :disabled="saving || isPlacementActive" @click="save">
           {{ saving ? '保存中…' : '保存' }}
         </button>
         <span class="muted">状态 · {{ floorplan.status }}</span>
       </div>
       <div
         class="floor-canvas"
-        :class="{ zoomable: canPreview && editorMode === 'select' }"
-        :title="canPreview && editorMode === 'select' ? '点击查看大图' : undefined"
-        @click="openPreview"
+        :class="{ zoomable: canPreview && editorMode === 'select' && !isPlacementActive }"
+        :title="canPreview && editorMode === 'select' && !isPlacementActive ? '点击查看大图' : undefined"
       >
         <FloorPlanSvg
           editable
@@ -184,13 +267,15 @@ onUnmounted(() => {
           :underlay-opacity="0.35"
           :editor-mode="editorMode"
           :scale-markers="scaleMarkers"
-          @canvas-click="addScalePoint"
+          :placement-active="isPlacementActive"
+          @canvas-click="onCanvasClick"
+          @background-click="openPreview"
           @room-select="selectRoom"
           @vertex-move="({ roomId, vertexIndex, point }) => updateRoomVertex(roomId, vertexIndex, point)"
-          @click.stop
         />
-        <span class="anno">
-          <template v-if="editorMode === 'scale'">比例尺模式：点击画布选两点，输入实际距离后应用</template>
+        <span class="anno" @click="openPreview">
+          <template v-if="isPlacementActive">放置模式：点击画布确定新房间中心，Esc 或「取消」退出</template>
+          <template v-else-if="editorMode === 'scale'">比例尺模式：点击画布选两点，输入实际距离后应用</template>
           <template v-else>
             <template v-if="showUnderlay">底图为原图 · </template>
             拖拽选中房间顶点可修正轮廓 · 改名称后保存或确认
@@ -208,57 +293,90 @@ onUnmounted(() => {
       <div class="image-preview-dialog" role="dialog" aria-modal="true" aria-label="户型大图">
         <header class="image-preview-head">
           <div class="preview-head-left">
-            <h3>{{ previewMode === 'original' ? '户型原图' : 'AI 标注图' }}</h3>
-            <div class="preview-tabs">
-              <button
-                type="button"
-                class="preview-tab"
-                :class="{ active: previewMode === 'original' }"
-                @click="previewMode = 'original'"
-              >
+            <h3>{{ previewTitle }}</h3>
+            <div class="preview-layer-toggles">
+              <label class="preview-layer-toggle">
+                <input
+                  type="checkbox"
+                  :checked="previewShowOriginal"
+                  data-testid="preview-toggle-original"
+                  @change="setPreviewShowOriginal(($event.target as HTMLInputElement).checked)"
+                />
                 原图
-              </button>
-              <button
-                type="button"
-                class="preview-tab"
-                :class="{ active: previewMode === 'annotated' }"
-                @click="previewMode = 'annotated'"
-              >
-                标注图
-              </button>
+              </label>
+              <label class="preview-layer-toggle">
+                <input
+                  type="checkbox"
+                  :checked="previewShowAnnotation"
+                  data-testid="preview-toggle-annotation"
+                  @change="setPreviewShowAnnotation(($event.target as HTMLInputElement).checked)"
+                />
+                标注
+              </label>
             </div>
           </div>
           <button type="button" class="icon-btn-close" aria-label="关闭" @click="closePreview">×</button>
         </header>
         <div class="image-preview-body">
+          <p v-if="!previewShowOriginal && !previewShowAnnotation" class="preview-empty muted">
+            请至少勾选「原图」或「标注」
+          </p>
           <img
-            v-if="previewMode === 'original'"
+            v-else-if="previewShowOriginal && !previewShowAnnotation"
             :src="floorplan.source_url"
             alt="户型原图"
             class="image-preview-img"
           />
           <FloorPlanSvg
-            v-else
+            v-else-if="previewShowAnnotation"
             class="preview-svg"
             :floorplan="floorplan"
             :selected-room-id="selectedRoomId"
-            :show-underlay="false"
+            :show-underlay="previewShowOriginal"
+            :underlay-opacity="0.35"
             :label-scale="1.15"
           />
         </div>
-        <footer v-if="previewMode === 'annotated'" class="image-preview-foot">
-          <span class="tiny muted">仅显示 AI 识别轮廓与房间名，不含原图文字</span>
+        <footer class="image-preview-foot">
+          <span class="tiny muted">{{ previewFootnote }}</span>
         </footer>
       </div>
     </div>
 
     <aside class="editor-inspector">
+      <h4>手动标注</h4>
+      <div class="manual-room-panel">
+        <label class="manual-room-field">
+          房间类型
+          <select v-model="pendingRoomType" class="input light" :disabled="isPlacementActive">
+            <optgroup v-for="group in ROOM_TYPE_GROUPS" :key="group.group" :label="group.group">
+              <option v-for="option in group.options" :key="option.key" :value="option.key">
+                {{ option.label }}
+              </option>
+            </optgroup>
+          </select>
+        </label>
+        <button
+          type="button"
+          class="btn sm primary block"
+          data-testid="add-room-btn"
+          :disabled="isPlacementActive || saving"
+          @click="beginAddRoom"
+        >
+          + 新增房间
+        </button>
+        <p class="tiny muted">选择类型后，在画布上点击中心位置放置默认矩形，再拖拽顶点微调</p>
+      </div>
+
+      <hr />
+
       <h4>选中：{{ selectedRoom?.name ?? '—' }}</h4>
       <div v-if="selectedRoom" class="form-row">
         <label>名称</label>
         <input
           class="input light"
           :value="selectedRoom.name"
+          :disabled="isPlacementActive"
           @input="updateRoomName(($event.target as HTMLInputElement).value)"
         />
       </div>
@@ -270,6 +388,16 @@ onUnmounted(() => {
         <label>连通</label>
         <span class="muted">{{ selectedRoom.id }}</span>
       </div>
+      <button
+        v-if="selectedRoom"
+        type="button"
+        class="btn sm ghost block danger-btn"
+        data-testid="delete-room-btn"
+        :disabled="!canDeleteRoom"
+        @click="deleteSelectedRoom"
+      >
+        删除房间
+      </button>
       <p v-if="error" class="error-text">{{ error }}</p>
       <div class="inspector-actions">
         <button
@@ -326,6 +454,44 @@ onUnmounted(() => {
 .warn-text {
   color: #8a5a24;
   margin: 0;
+}
+
+.placement-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(201, 125, 58, 0.12);
+  border: 1px solid rgba(201, 125, 58, 0.35);
+  font-size: 0.82rem;
+  color: #8a5a24;
+}
+
+.manual-room-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.manual-room-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.danger-btn {
+  color: #d48f8f;
+  border-color: #5a3a3a;
+  margin-top: 0.5rem;
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: rgba(212, 143, 143, 0.12);
 }
 
 .editor-loading,
@@ -448,6 +614,30 @@ onUnmounted(() => {
 .preview-tabs {
   display: flex;
   gap: 0.35rem;
+}
+
+.preview-layer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.preview-layer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.preview-layer-toggle input {
+  accent-color: var(--accent);
+}
+
+.preview-empty {
+  padding: 2rem 1rem;
+  text-align: center;
 }
 
 .preview-tab {

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>House-DIY 流程重构 v2 原型</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="proto-nav">
+      <div class="proto-brand">
+        <span class="logo-mark">HD</span>
+        <div>
+          <strong>House-DIY</strong>
+          <small>流程重构 v2</small>
+        </div>
+      </div>
+      <p class="proto-hint">对齐 Vue 应用 UI · 绿/黄/灰步骤条 · 左侧切换页面</p>
+      <nav class="screen-list" id="screenList"></nav>
+      <a class="overview-link" href="../index.html">← 返回 v1 原型</a>
+      <a class="overview-link" href="../../11-流程重构需求.md">需求文档</a>
+    </aside>
+
+    <main class="proto-stage">
+      <header class="stage-toolbar">
+        <span class="screen-id" id="screenId">02</span>
+        <h1 id="screenTitle">2 户型图解析</h1>
+        <button type="button" class="btn ghost sm" id="prevBtn">上一屏</button>
+        <button type="button" class="btn primary sm" id="nextBtn">下一屏</button>
+      </header>
+      <div class="app-viewport" id="appViewport"></div>
+    </main>
+  </div>
+
+  <script src="screens.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

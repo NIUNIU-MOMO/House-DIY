@@ -13,7 +13,7 @@ from app.services.floorplan.floorplan_service import prepare_floorplan_for_save
 from app.services.floorplan.plan_classifier import classify_floorplan_image, plan_type_label
 from app.services.floorplan.parser_cv import compute_scale_pixels_per_meter
 from app.services.floorplan.parser_validate import validation_blocks_confirm
-from app.services.floorplan.task_parse import create_floorplan_parse_task, start_floorplan_parse
+from app.services.floorplan.task_parse import create_floorplan_parse_task, start_floorplan_parse, task_to_read
 
 router = APIRouter(prefix="/projects/{project_id}/floorplan", tags=["floorplan"])
 
@@ -183,4 +183,4 @@ async def start_parse_floorplan(
 
     task = create_floorplan_parse_task(db, project_id)
     background_tasks.add_task(start_floorplan_parse, task.id)
-    return task
+    return task_to_read(task)
