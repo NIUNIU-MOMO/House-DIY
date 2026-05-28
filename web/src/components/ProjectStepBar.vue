@@ -15,6 +15,8 @@ const props = defineProps<{
   projectId: number
   current: ProjectStep
   locked?: boolean
+  /** 禁止从流程条进入的步骤（如解析回访页不可直跳标注） */
+  blockedSteps?: ProjectStep[]
 }>()
 
 const router = useRouter()
@@ -37,6 +39,9 @@ function stepClass(key: ProjectStep) {
 
 function canGoTo(key: ProjectStep) {
   if (props.locked) {
+    return false
+  }
+  if (props.blockedSteps?.includes(key)) {
     return false
   }
   return isStepReachable(key, maxCompletedIndex.value)

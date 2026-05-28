@@ -13,7 +13,7 @@ const projectId = computed(() => Number(route.params.id))
 const projectName = ref('')
 const estimatedArea = ref('')
 const selectedFile = ref<File | null>(null)
-const previewUrl = ref<string | null>(null)
+const previewSrc = ref<string | null>(null)
 const existingFloorplan = ref<FloorPlan | null>(null)
 const uploading = ref(false)
 const error = ref<string | null>(null)
@@ -23,11 +23,19 @@ const hasExistingImage = computed(
   () => Boolean(existingFloorplan.value?.source_url || existingFloorplan.value?.source_image),
 )
 
-const canSubmit = computed(() => Boolean(selectedFile.value) && !uploading.value)
+const canStartParse = computed(
+  () => (hasExistingImage.value || Boolean(selectedFile.value)) && !uploading.value,
+)
 
 const existingFileLabel = computed(() => {
+  if (uploading.value && selectedFile.value) {
+    return `上传中… ${selectedFile.value.name}`
+  }
   if (selectedFile.value) {
     return selectedFile.value.name
+  }
+  if (existingFloorplan.value?.original_filename) {
+    return existingFloorplan.value.original_filename
   }
   if (hasExistingImage.value) {
     return '已上传户型图'
@@ -35,20 +43,74 @@ const existingFileLabel = computed(() => {
   return null
 })
 
-function setFile(file: File | null) {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-    previewUrl.value = null
+const showPreview = computed(() => Boolean(previewSrc.value))
+
+function isImageFile(file: File) {
+  if (file.type.startsWith('image/')) {
+    return true
   }
+  return /\.(png|jpe?g|webp|gif)$/i.test(file.name)
+}
+
+function revokeLocalPreview() {
+  if (previewSrc.value?.startsWith('blob:')) {
+    URL.revokeObjectURL(previewSrc.value)
+  }
+}
+
+function applyPreviewFromFloorplan(floorplan: FloorPlan) {
+  revokeLocalPreview()
+  previewSrc.value = floorplan.source_url ?? floorplan.source_image ?? null
+}
+
+function showLocalPreview(file: File) {
+  revokeLocalPreview()
+  if (isImageFile(file)) {
+    previewSrc.value = URL.createObjectURL(file)
+  } else {
+    previewSrc.value = null
+  }
+}
+
+async function uploadFile(file: File) {
+  uploading.value = true
+  error.value = null
+  try {
+    const area = estimatedArea.value.trim() ? Number(estimatedArea.value) : undefined
+    const saved = await api.uploadFloorplan(projectId.value, file, {
+      name: projectName.value.trim() || undefined,
+      estimatedArea: Number.isFinite(area) ? area : undefined,
+    })
+    existingFloorplan.value = saved
+    selectedFile.value = null
+    applyPreviewFromFloorplan(saved)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '上传失败'
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function setFile(file: File | null) {
   selectedFile.value = file
-  if (file?.type.startsWith('image/')) {
-    previewUrl.value = URL.createObjectURL(file)
+  error.value = null
+  if (!file) {
+    if (existingFloorplan.value) {
+      applyPreviewFromFloorplan(existingFloorplan.value)
+    } else {
+      revokeLocalPreview()
+      previewSrc.value = null
+    }
+    return
   }
+
+  showLocalPreview(file)
+  await uploadFile(file)
 }
 
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  setFile(input.files?.[0] ?? null)
+  void setFile(input.files?.[0] ?? null)
 }
 
 function onDrop(event: DragEvent) {
@@ -56,7 +118,7 @@ function onDrop(event: DragEvent) {
   dragOver.value = false
   const file = event.dataTransfer?.files?.[0]
   if (file) {
-    setFile(file)
+    void setFile(file)
   }
 }
 
@@ -85,41 +147,28 @@ async function loadProject() {
     if (existingFloorplan.value.estimated_area != null) {
       estimatedArea.value = String(existingFloorplan.value.estimated_area)
     }
+    applyPreviewFromFloorplan(existingFloorplan.value)
   } catch {
     existingFloorplan.value = null
+    previewSrc.value = null
   }
 }
 
 async function handleSubmit() {
-  if (!selectedFile.value) {
+  if (selectedFile.value) {
+    await uploadFile(selectedFile.value)
+    if (error.value) {
+      return
+    }
+  }
+  if (!hasExistingImage.value) {
     return
   }
-  uploading.value = true
-  error.value = null
-  try {
-    const area = estimatedArea.value.trim() ? Number(estimatedArea.value) : undefined
-    await api.uploadFloorplan(projectId.value, selectedFile.value, {
-      name: projectName.value.trim() || undefined,
-      estimatedArea: Number.isFinite(area) ? area : undefined,
-    })
-    router.push({ name: 'floorplan-parse', params: { id: projectId.value } })
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '上传失败'
-  } finally {
-    uploading.value = false
-  }
-}
-
-function continueToParse() {
   router.push({ name: 'floorplan-parse', params: { id: projectId.value } })
 }
 
 onMounted(loadProject)
-onBeforeUnmount(() => {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-  }
-})
+onBeforeUnmount(revokeLocalPreview)
 </script>
 
 <template>
@@ -133,7 +182,7 @@ onBeforeUnmount(() => {
 
       <div
         class="upload-zone"
-        :class="{ 'has-file': selectedFile || hasExistingImage, 'drag-over': dragOver }"
+        :class="{ 'has-file': selectedFile || hasExistingImage, 'drag-over': dragOver, uploading }"
         role="button"
         tabindex="0"
         @click="openFilePicker"
@@ -155,18 +204,9 @@ onBeforeUnmount(() => {
         <p class="tiny muted">最大 20MB</p>
       </div>
 
-      <img
-        v-if="previewUrl"
-        :src="previewUrl"
-        alt="预览"
-        class="preview-image"
-      />
-      <img
-        v-else-if="existingFloorplan?.source_url"
-        :src="existingFloorplan.source_url"
-        alt="已上传户型"
-        class="preview-image"
-      />
+      <div v-if="showPreview" class="preview-frame">
+        <img :src="previewSrc!" alt="户型图预览" class="preview-image" />
+      </div>
 
       <div class="meta-fields">
         <div class="form-row">
@@ -189,21 +229,7 @@ onBeforeUnmount(() => {
 
       <div class="footer-actions">
         <button type="button" class="btn ghost" @click="router.push('/')">取消</button>
-        <button
-          v-if="hasExistingImage && !selectedFile"
-          type="button"
-          class="btn primary"
-          @click="continueToParse"
-        >
-          开始解析 →
-        </button>
-        <button
-          v-else
-          type="button"
-          class="btn primary"
-          :disabled="!canSubmit"
-          @click="handleSubmit"
-        >
+        <button type="button" class="btn primary" :disabled="!canStartParse" @click="handleSubmit">
           {{ uploading ? '上传中…' : '开始解析 →' }}
         </button>
       </div>
@@ -223,19 +249,32 @@ onBeforeUnmount(() => {
   margin-top: 0.35rem;
 }
 
+.upload-zone.uploading {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
 .error-text {
   color: #d48f8f;
   font-size: 0.85rem;
   margin-top: 0.75rem;
 }
 
+.preview-frame {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #eee;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+}
+
 .preview-image {
   width: 100%;
-  max-height: 160px;
+  max-height: 320px;
   object-fit: contain;
-  border-radius: 8px;
-  margin: 1rem 0;
-  background: #eee;
+  display: block;
 }
 
 .meta-fields {

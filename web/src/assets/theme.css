@@ -482,6 +482,10 @@ select {
   align-items: center;
 }
 
+.canvas-toolbar-action {
+  margin-left: auto;
+}
+
 .floor-canvas {
   flex: 1;
   display: grid;

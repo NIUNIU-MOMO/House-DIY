@@ -2,10 +2,18 @@ import { computed, ref } from 'vue'
 import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { snapPointToWalls } from '@/utils/geometry'
+import { snapAnnotationPoint } from '@/utils/geometry'
 import { api } from '@/api/client'
 import { DEFAULT_ROOM_TYPE, type RoomTypeKey } from '@/constants/roomTypes'
 import { useManualRoom } from '@/components/FloorPlanEditor/useManualRoom'
+import { cloneFloorplanSnapshot } from '@/components/FloorPlanEditor/floorplanSnapshot'
+import {
+  applyPolygonToRoom,
+  insertVertexOnEdge,
+  removeVertexFromPolygon,
+  updateRoomPolygon,
+} from '@/components/FloorPlanEditor/usePolygonEdit'
+import { useTraceMode } from '@/components/FloorPlanEditor/useTraceMode'
 import {
   computeViewBox,
   polygonCentroid,
@@ -16,12 +24,16 @@ import {
 } from '@/types/floorplan'
 
 export type EditorMode = 'select' | 'scale'
+export type AnnotationSubMode = 'adjust' | 'trace' | 'place-rect'
 
 export function useFloorPlanCanvas(projectId: Ref<number>) {
   const router = useRouter()
   const floorplan = ref<FloorPlanData | null>(null)
   const selectedRoomId = ref<string | null>(null)
+  const selectedVertexIndex = ref<number | null>(null)
   const editorMode = ref<EditorMode>('select')
+  const annotationSubMode = ref<AnnotationSubMode>('adjust')
+  const cornerSnapEnabled = ref(true)
   const scalePoints = ref<[FloorPoint | null, FloorPoint | null]>([null, null])
   const scaleDistanceM = ref('')
   const loading = ref(false)
@@ -30,6 +42,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   const isDirty = ref(false)
   const placementMode = ref<{ active: true; typeKey: RoomTypeKey } | null>(null)
   const { addRoomAt, removeRoom } = useManualRoom(floorplan)
+  const trace = useTraceMode()
 
   const viewBox = computed(() =>
     floorplan.value ? computeViewBox(floorplan.value) : '0 0 400 300',
@@ -52,16 +65,23 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
 
   const hasValidationError = computed(() => validationLevel.value === 'error')
 
+  const isTraceActive = computed(() => trace.isTraceActive.value)
+
   const canConfirm = computed(
     () =>
       Boolean(floorplan.value?.rooms.length)
       && !hasValidationError.value
       && !saving.value
-      && !placementMode.value?.active,
+      && !placementMode.value?.active
+      && !trace.isTraceActive.value,
   )
 
   const canDeleteRoom = computed(
-    () => Boolean(selectedRoomId.value) && (floorplan.value?.rooms.length ?? 0) > 1 && !placementMode.value?.active,
+    () =>
+      Boolean(selectedRoomId.value)
+      && (floorplan.value?.rooms.length ?? 0) > 1
+      && !placementMode.value?.active
+      && !trace.isTraceActive.value,
   )
 
   const isPlacementActive = computed(() => Boolean(placementMode.value?.active))
@@ -73,6 +93,19 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     return scalePoints.value[0] != null && scalePoints.value[1] != null && Number.isFinite(distance) && distance > 0
   })
 
+  function snapOptions(skipSnap = false) {
+    return {
+      cornerSnapEnabled: cornerSnapEnabled.value,
+      skipSnap,
+    }
+  }
+
+  function exitAnnotationModes() {
+    placementMode.value = null
+    trace.cancelTrace()
+    annotationSubMode.value = 'adjust'
+  }
+
   async function load() {
     loading.value = true
     error.value = null
@@ -80,6 +113,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
       const data = (await api.getFloorplan(projectId.value)) as FloorPlanData
       floorplan.value = data
       selectedRoomId.value = data.rooms[0]?.id ?? null
+      selectedVertexIndex.value = null
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载失败'
     } finally {
@@ -112,10 +146,16 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   }
 
   function selectRoom(roomId: string) {
-    if (editorMode.value !== 'select' || placementMode.value?.active) {
+    if (editorMode.value !== 'select' || placementMode.value?.active || trace.isTraceActive.value) {
       return
     }
     selectedRoomId.value = roomId
+    selectedVertexIndex.value = null
+    annotationSubMode.value = 'adjust'
+  }
+
+  function selectVertex(vertexIndex: number) {
+    selectedVertexIndex.value = vertexIndex
   }
 
   function startPlacement(typeKey: RoomTypeKey = DEFAULT_ROOM_TYPE) {
@@ -123,11 +163,81 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
       editorMode.value = 'select'
       resetScalePoints()
     }
+    trace.cancelTrace()
     placementMode.value = { active: true, typeKey }
+    annotationSubMode.value = 'place-rect'
   }
 
   function cancelPlacement() {
     placementMode.value = null
+    annotationSubMode.value = 'adjust'
+  }
+
+  function startTrace(typeKey: RoomTypeKey = DEFAULT_ROOM_TYPE, redrawRoomId: string | null = null) {
+    if (editorMode.value !== 'select') {
+      editorMode.value = 'select'
+      resetScalePoints()
+    }
+    placementMode.value = null
+    trace.startTrace(typeKey, redrawRoomId)
+    annotationSubMode.value = 'trace'
+    error.value = null
+  }
+
+  function cancelTrace() {
+    trace.cancelTrace()
+    annotationSubMode.value = 'adjust'
+  }
+
+  function undoTracePoint() {
+    trace.undoTracePoint()
+  }
+
+  function addTracePoint(point: FloorPoint, skipSnap = false) {
+    if (!floorplan.value || !trace.isTraceActive.value) {
+      return false
+    }
+    return trace.addTracePoint(point, floorplan.value.walls, snapOptions(skipSnap))
+  }
+
+  function finishTrace(): boolean {
+    if (!floorplan.value || !trace.isTraceActive.value) {
+      return false
+    }
+    const polygon = trace.closeTrace()
+    if (!polygon) {
+      error.value = trace.traceError.value
+      return false
+    }
+    const room = trace.buildTraceRoom(polygon, floorplan.value.rooms, floorplan.value.scale)
+    if (!room) {
+      return false
+    }
+    if (trace.traceTarget.value?.redrawRoomId) {
+      floorplan.value = {
+        ...floorplan.value,
+        rooms: updateRoomPolygon(floorplan.value.rooms, room.id, room.polygon, floorplan.value.scale),
+      }
+    } else {
+      floorplan.value = {
+        ...floorplan.value,
+        rooms: [...floorplan.value.rooms, room],
+      }
+    }
+    selectedRoomId.value = room.id
+    selectedVertexIndex.value = null
+    trace.cancelTrace()
+    annotationSubMode.value = 'adjust'
+    error.value = null
+    markDirty()
+    return true
+  }
+
+  function startRetraceSelectedRoom() {
+    if (!selectedRoom.value) {
+      return
+    }
+    startTrace(DEFAULT_ROOM_TYPE, selectedRoom.value.id)
   }
 
   function placeAt(point: FloorPoint) {
@@ -137,6 +247,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     const typeKey = placementMode.value.typeKey
     const roomId = addRoomAt(typeKey, point)
     placementMode.value = null
+    annotationSubMode.value = 'adjust'
     if (roomId) {
       selectedRoomId.value = roomId
     }
@@ -157,6 +268,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
       return false
     }
     selectedRoomId.value = floorplan.value?.rooms[0]?.id ?? null
+    selectedVertexIndex.value = null
     markDirty()
     return true
   }
@@ -166,7 +278,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     if (mode === 'select') {
       resetScalePoints()
     } else {
-      cancelPlacement()
+      exitAnnotationModes()
     }
   }
 
@@ -224,17 +336,67 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     if (!floorplan.value) {
       return
     }
-    const snapped = snapPointToWalls(point, floorplan.value.walls)
-    floorplan.value.rooms = floorplan.value.rooms.map((room) => {
-      if (room.id !== roomId) {
-        return room
-      }
-      const polygon = room.polygon.map((vertex, index) =>
-        index === vertexIndex ? { ...snapped } : vertex,
-      )
-      return { ...room, polygon }
-    })
+    const room = floorplan.value.rooms.find((item) => item.id === roomId)
+    if (!room) {
+      return
+    }
+    const snapped = snapAnnotationPoint(point, floorplan.value.walls, snapOptions()).point
+    const polygon = room.polygon.map((vertex, index) =>
+      index === vertexIndex ? { ...snapped } : vertex,
+    )
+    floorplan.value = {
+      ...floorplan.value,
+      rooms: updateRoomPolygon(floorplan.value.rooms, roomId, polygon, floorplan.value.scale),
+    }
     markDirty()
+  }
+
+  function insertVertexOnSelectedEdge(edgeIndex: number) {
+    if (!floorplan.value || !selectedRoomId.value) {
+      return false
+    }
+    const room = floorplan.value.rooms.find((item) => item.id === selectedRoomId.value)
+    if (!room) {
+      return false
+    }
+    const nextPolygon = insertVertexOnEdge(room.polygon, edgeIndex, floorplan.value.walls, snapOptions())
+    if (!nextPolygon) {
+      return false
+    }
+    floorplan.value = {
+      ...floorplan.value,
+      rooms: updateRoomPolygon(floorplan.value.rooms, room.id, nextPolygon, floorplan.value.scale),
+    }
+    selectedVertexIndex.value = edgeIndex + 1
+    markDirty()
+    return true
+  }
+
+  function removeSelectedVertex(vertexIndex?: number) {
+    if (!floorplan.value || !selectedRoomId.value) {
+      return false
+    }
+    const room = floorplan.value.rooms.find((item) => item.id === selectedRoomId.value)
+    if (!room) {
+      return false
+    }
+    const targetIndex = vertexIndex ?? selectedVertexIndex.value
+    if (targetIndex == null) {
+      return false
+    }
+    const nextPolygon = removeVertexFromPolygon(room.polygon, targetIndex)
+    if (!nextPolygon) {
+      error.value = '至少保留 3 个顶点'
+      return false
+    }
+    floorplan.value = {
+      ...floorplan.value,
+      rooms: updateRoomPolygon(floorplan.value.rooms, room.id, nextPolygon, floorplan.value.scale),
+    }
+    selectedVertexIndex.value = null
+    error.value = null
+    markDirty()
+    return true
   }
 
   function moveRoomEdge(roomId: string, edgeIndex: number, delta: FloorPoint) {
@@ -252,7 +414,7 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
         }
         return vertex
       })
-      return { ...room, polygon }
+      return applyPolygonToRoom(room, polygon, floorplan.value!.scale)
     })
     markDirty()
   }
@@ -296,20 +458,47 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
   }
 
   function addRoomAtPoint(typeKey: RoomTypeKey, point: FloorPoint) {
-    const roomId = addRoomAt(typeKey, point)
-    if (roomId) {
-      selectedRoomId.value = roomId
+    startPlacement(typeKey)
+    placeAt(point)
+  }
+
+  function snapshotFloorplan(): FloorPlanData | null {
+    if (!floorplan.value) {
+      return null
     }
-    markDirty()
+    return cloneFloorplanSnapshot(floorplan.value)
+  }
+
+  function restoreFloorplanSnapshot(data: FloorPlanData) {
+    floorplan.value = cloneFloorplanSnapshot(data)
+    selectedRoomId.value = data.rooms[0]?.id ?? null
+    selectedVertexIndex.value = null
+    exitAnnotationModes()
+    resetScalePoints()
+    editorMode.value = 'select'
+  }
+
+  function previewSnap(point: FloorPoint, skipSnap = false) {
+    if (!floorplan.value) {
+      return { point, kind: 'none' as const }
+    }
+    return snapAnnotationPoint(point, floorplan.value.walls, snapOptions(skipSnap))
   }
 
   return {
     floorplan,
     selectedRoomId,
     selectedRoom,
+    selectedVertexIndex,
     editorMode,
+    annotationSubMode,
+    cornerSnapEnabled,
     placementMode,
     isPlacementActive,
+    isTraceActive,
+    tracePoints: trace.tracePoints,
+    traceError: trace.traceError,
+    canCloseTrace: trace.canCloseTrace,
     scalePoints,
     scaleDistanceM,
     scaleMarkers,
@@ -324,8 +513,15 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     load,
     save,
     selectRoom,
+    selectVertex,
     startPlacement,
     cancelPlacement,
+    startTrace,
+    cancelTrace,
+    undoTracePoint,
+    addTracePoint,
+    finishTrace,
+    startRetraceSelectedRoom,
     placeAt,
     addRoomAtPoint,
     deleteSelectedRoom,
@@ -336,6 +532,8 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     applyScale,
     updateRoomName,
     updateRoomVertex,
+    insertVertexOnSelectedEdge,
+    removeSelectedVertex,
     moveRoomEdge,
     roomLabel,
     roomCenter,
@@ -344,5 +542,8 @@ export function useFloorPlanCanvas(projectId: Ref<number>) {
     validationIssues,
     hasValidationError,
     canConfirm,
+    snapshotFloorplan,
+    restoreFloorplanSnapshot,
+    previewSnap,
   }
 }

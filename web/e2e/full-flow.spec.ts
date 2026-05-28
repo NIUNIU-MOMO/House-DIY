@@ -35,7 +35,10 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await installCoreMocks(page)
     await page.goto(`/projects/${PROJECT_ID}/editor`)
     await expect(page.getByText('3 标注')).toBeVisible()
+    await expect(page.getByTestId('inspector-validation')).toBeVisible()
+    await expect(page.getByText('户型质检 · 通过')).toBeVisible()
     await expect(page.getByTestId('confirm-floorplan-btn')).toBeVisible()
+    await expect(page.getByTestId('add-room-btn')).toHaveCount(0)
   })
 
   test('04b 标注 — 质检 error 时禁止确认', async ({ page }) => {
@@ -44,6 +47,56 @@ test.describe('原型主流程 smoke（mock API）', () => {
     await expect(page.getByText('户型质检 · 未通过')).toBeVisible()
     await expect(page.getByTestId('confirm-floorplan-btn')).toBeDisabled()
     await expect(page.getByText('存在严重质检问题')).toBeVisible()
+  })
+
+  test('04d 标注 — 沿墙描边新增房间', async ({ page }) => {
+    await installCoreMocks(page)
+    await page.goto(`/projects/${PROJECT_ID}/editor`)
+    await page.getByTestId('fullscreen-annotate-btn').click()
+    const overlay = page.getByTestId('annotate-fullscreen-overlay')
+    await page.keyboard.press('Escape')
+    await expect(overlay.getByTestId('trace-room-btn')).toBeVisible()
+    const roomCountBefore = await page.locator('.room-list li').count()
+    await overlay.getByTestId('trace-room-btn').click()
+    const svg = overlay.locator('.floor-svg')
+    const box = await svg.boundingBox()
+    if (!box) {
+      throw new Error('floor svg not found')
+    }
+    const clicks = [
+      { x: box.x + box.width * 0.2, y: box.y + box.height * 0.2 },
+      { x: box.x + box.width * 0.5, y: box.y + box.height * 0.2 },
+      { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 },
+    ]
+    for (const point of clicks) {
+      await page.mouse.click(point.x, point.y)
+    }
+    await overlay.getByTestId('trace-finish-btn').click()
+    await expect(page.locator('.room-list li')).toHaveCount(roomCountBefore + 1)
+  })
+
+  test('04e 标注 — 双击边线插入顶点', async ({ page }) => {
+    await installCoreMocks(page)
+    await page.goto(`/projects/${PROJECT_ID}/editor`)
+    await page.getByTestId('fullscreen-annotate-btn').click()
+    const overlay = page.getByTestId('annotate-fullscreen-overlay')
+    await page.keyboard.press('Escape')
+    await overlay.locator('.room-hit').first().click()
+    await overlay.getByTestId('edge-handle-0').dblclick()
+    await expect(page.locator('.vertex-handle')).toHaveCount(5)
+  })
+
+  test('04c 标注 — 全屏标注入口', async ({ page }) => {
+    await installCoreMocks(page)
+    await page.goto(`/projects/${PROJECT_ID}/editor`)
+    await expect(page.getByTestId('fullscreen-annotate-btn')).toBeVisible()
+    await page.getByTestId('fullscreen-annotate-btn').click()
+    const overlay = page.getByTestId('annotate-fullscreen-overlay')
+    await expect(overlay).toBeVisible()
+    await expect(overlay.getByRole('heading', { name: '手动标注', level: 3 })).toBeVisible()
+    await expect(overlay.getByText(/在户型图上点击房间中心位置以放置/)).toBeVisible()
+    await expect(overlay.getByRole('button', { name: '标准矩形模式' })).toHaveClass(/is-active/)
+    await expect(overlay.getByTestId('tool-scale')).toBeVisible()
   })
 
   test('05 设计 — Studio 与方案', async ({ page }) => {

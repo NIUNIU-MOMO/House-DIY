@@ -79,6 +79,7 @@ def _save_annotation(project_id: int, payload: FloorPlanModel, db: Session) -> F
     prepared = prepared.model_copy(update={"status": FloorPlanStatus.DRAFT})
     storage.save_floorplan(project_id, prepared)
     bump_max_step_db(db, project, ProjectMaxStep.ANNOTATE)
+    clear_annotation_stale(project_id)
     return _to_read_model(project_id)
 
 

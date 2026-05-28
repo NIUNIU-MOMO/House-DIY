@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
 import ProjectStepBar from '@/components/ProjectStepBar.vue'
@@ -9,10 +9,19 @@ import FloorPlanEditor from '@/components/FloorPlanEditor/index.vue'
 import { useUnsavedGuard } from '@/composables/useUnsavedGuard'
 
 const route = useRoute()
+const router = useRouter()
 const projectId = computed(() => Number(route.params.id))
+const autoSaveAfterParse = computed(() => route.query.fromParse === '1')
 
 const isDirty = ref(false)
 useUnsavedGuard(isDirty)
+
+function clearFromParseQuery() {
+  if (route.query.fromParse !== '1') {
+    return
+  }
+  router.replace({ name: 'floorplan-editor', params: { id: projectId.value } })
+}
 </script>
 
 <template>
@@ -22,7 +31,12 @@ useUnsavedGuard(isDirty)
       <ProjectStepBar :project-id="projectId" current="annotate" />
       <StepBackButton :project-id="projectId" current="annotate" />
     </div>
-    <FloorPlanEditor v-model:dirty="isDirty" :project-id="projectId" />
+    <FloorPlanEditor
+      v-model:dirty="isDirty"
+      :project-id="projectId"
+      :auto-save-after-parse="autoSaveAfterParse"
+      @auto-save-after-parse-done="clearFromParseQuery"
+    />
   </div>
 </template>
 

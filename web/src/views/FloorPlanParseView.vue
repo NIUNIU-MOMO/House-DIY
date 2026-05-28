@@ -7,7 +7,11 @@ import ProjectStepBar from '@/components/ProjectStepBar.vue'
 import { api, type Task } from '@/api/client'
 import { useTaskWebSocket } from '@/composables/useTaskWebSocket'
 import { PARSE_STEP_LABELS } from '@/types/task'
-import { resolveMaxCompletedStepIndex, stepIndex } from '@/utils/projectNavigation'
+import {
+  maxStepToProjectStep,
+  resolveMaxCompletedStepIndex,
+  stepIndex,
+} from '@/utils/projectNavigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +21,10 @@ const task = ref<Task | null>(null)
 const error = ref<string | null>(null)
 const starting = ref(false)
 const cancelling = ref(false)
-const parseCompleted = ref(false)
+const hasPassedParse = ref(false)
+const isReparseSession = ref(false)
+const hadSavedAnnotationBeforeReparse = ref(false)
+const annotationBackup = ref<Record<string, unknown> | null>(null)
 const logPanelRef = ref<HTMLElement | null>(null)
 
 const progress = computed(() => Math.round(task.value?.progress ?? 0))
@@ -26,9 +33,29 @@ const isParseActive = computed(
 )
 const taskLogs = computed(() => task.value?.logs ?? [])
 
+const statusTitle = computed(() => {
+  if (task.value?.status === 'failed') {
+    return '解析失败'
+  }
+  if (isParseActive.value) {
+    return '正在解析户型…'
+  }
+  if (task.value?.status === 'done') {
+    return '解析已完成'
+  }
+  return '正在解析户型…'
+})
+
+const showSpinner = computed(() => isParseActive.value)
+
+const showReparseButton = computed(() => hasPassedParse.value && !isParseActive.value)
+
 function stepClass(index: number) {
   if (!task.value) {
     return index === 0 ? 'active' : ''
+  }
+  if (task.value.status === 'done') {
+    return 'done'
   }
   if (index < task.value.step) {
     return 'done'
@@ -59,12 +86,70 @@ function scrollLogsToBottom() {
   })
 }
 
+function projectHasSavedAnnotation(maxStep: string) {
+  return stepIndex(maxStepToProjectStep(maxStep)) >= stepIndex('annotate')
+}
+
+function showIdleCompletedTask() {
+  const lastLabel = PARSE_STEP_LABELS[PARSE_STEP_LABELS.length - 1] ?? ''
+  task.value = {
+    id: 0,
+    project_id: projectId.value,
+    type: 'floorplan_parse',
+    status: 'done',
+    progress: 100,
+    step: PARSE_STEP_LABELS.length - 1,
+    step_label: lastLabel,
+    error: null,
+    logs: [],
+  }
+}
+
+async function restoreAnnotationBackup() {
+  if (!annotationBackup.value) {
+    return
+  }
+  try {
+    await api.saveFloorplanAnnotation(projectId.value, annotationBackup.value)
+    annotationBackup.value = null
+    error.value = null
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '恢复标注失败'
+  }
+}
+
+async function handleParseDone() {
+  if (isReparseSession.value && hadSavedAnnotationBeforeReparse.value) {
+    const overwrite = window.confirm(
+      '是否覆盖已保存的标注结果？\n\n确定：使用本次解析结果覆盖并自动保存。\n取消：放弃本次解析，保留原有标注。',
+    )
+    isReparseSession.value = false
+    if (overwrite) {
+      router.push({
+        name: 'floorplan-editor',
+        params: { id: projectId.value },
+        query: { fromParse: '1' },
+      })
+      return
+    }
+    await restoreAnnotationBackup()
+    showIdleCompletedTask()
+    return
+  }
+
+  router.push({
+    name: 'floorplan-editor',
+    params: { id: projectId.value },
+    query: { fromParse: '1' },
+  })
+}
+
 function handleTaskUpdate(next: Task) {
   task.value = next
   scrollLogsToBottom()
   if (next.status === 'done') {
     setTimeout(() => {
-      router.push({ name: 'floorplan-editor', params: { id: projectId.value } })
+      void handleParseDone()
     }, 600)
   }
   if (next.status === 'failed') {
@@ -88,13 +173,23 @@ async function pollTask(taskId: number) {
 async function startParse() {
   starting.value = true
   error.value = null
-  parseCompleted.value = false
   try {
+    const project = await api.getProject(projectId.value)
+    const isReparse = hasPassedParse.value || stepIndex(maxStepToProjectStep(project.max_step)) > stepIndex('parse')
+    isReparseSession.value = isReparse
+    hadSavedAnnotationBeforeReparse.value = projectHasSavedAnnotation(project.max_step)
+    if (isReparse && hadSavedAnnotationBeforeReparse.value) {
+      annotationBackup.value = (await api.getFloorplan(projectId.value)) as Record<string, unknown>
+    } else {
+      annotationBackup.value = null
+    }
+
     const created = await api.startFloorplanParse(projectId.value)
     task.value = created
     pollTask(created.id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '无法启动解析'
+    isReparseSession.value = false
   } finally {
     starting.value = false
   }
@@ -121,8 +216,10 @@ watch(taskLogs, scrollLogsToBottom)
 onMounted(async () => {
   const project = await api.getProject(projectId.value)
   const maxIdx = await resolveMaxCompletedStepIndex(projectId.value, project)
-  if (maxIdx > stepIndex('parse')) {
-    parseCompleted.value = true
+  hasPassedParse.value = maxIdx > stepIndex('parse')
+
+  if (hasPassedParse.value) {
+    showIdleCompletedTask()
     return
   }
 
@@ -159,60 +256,51 @@ onMounted(async () => {
         >
           {{ cancelling ? '取消中…' : '取消解析' }}
         </button>
+        <button
+          v-else-if="showReparseButton"
+          type="button"
+          class="btn ghost sm"
+          :disabled="starting"
+          @click="startParse"
+        >
+          {{ starting ? '启动中…' : '重新解析' }}
+        </button>
       </div>
 
       <div class="loader-card">
-        <template v-if="parseCompleted">
-          <h2>解析已完成</h2>
-          <p class="muted">可前往「标注」查看结果，或重新解析覆盖当前数据</p>
-          <div class="revisit-actions">
-            <button
-              type="button"
-              class="btn primary"
-              @click="router.push({ name: 'floorplan-editor', params: { id: projectId } })"
-            >
-              前往标注 →
-            </button>
-            <button type="button" class="btn ghost" :disabled="starting" @click="startParse">
-              重新解析
-            </button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="spinner" />
-          <h2>{{ task?.status === 'failed' ? '解析失败' : '正在解析户型…' }}</h2>
-          <p class="muted progress-text">{{ progress }}%</p>
+        <div v-if="showSpinner" class="spinner" />
+        <h2>{{ statusTitle }}</h2>
+        <p class="muted progress-text">{{ progress }}%</p>
 
-          <ul class="task-list">
-            <li
-              v-for="(label, index) in PARSE_STEP_LABELS"
-              :key="label"
-              :class="stepClass(index)"
-            >
-              {{ stepIcon(index) }} {{ label }}
-            </li>
-          </ul>
-
-          <div v-if="taskLogs.length > 0" class="log-panel-wrap">
-            <p class="log-title">处理日志</p>
-            <div ref="logPanelRef" class="log-panel" role="log" aria-live="polite">
-              <p v-for="(line, index) in taskLogs" :key="`${index}-${line}`" class="log-line">
-                {{ line }}
-              </p>
-            </div>
-          </div>
-
-          <p v-if="error" class="error-text">{{ error }}</p>
-          <button
-            v-if="task?.status === 'failed'"
-            type="button"
-            class="btn primary"
-            :disabled="starting"
-            @click="startParse"
+        <ul class="task-list">
+          <li
+            v-for="(label, index) in PARSE_STEP_LABELS"
+            :key="label"
+            :class="stepClass(index)"
           >
-            重试解析
-          </button>
-        </template>
+            {{ stepIcon(index) }} {{ label }}
+          </li>
+        </ul>
+
+        <div v-if="taskLogs.length > 0" class="log-panel-wrap">
+          <p class="log-title">处理日志</p>
+          <div ref="logPanelRef" class="log-panel" role="log" aria-live="polite">
+            <p v-for="(line, index) in taskLogs" :key="`${index}-${line}`" class="log-line">
+              {{ line }}
+            </p>
+          </div>
+        </div>
+
+        <p v-if="error" class="error-text">{{ error }}</p>
+        <button
+          v-if="task?.status === 'failed'"
+          type="button"
+          class="btn primary"
+          :disabled="starting"
+          @click="startParse"
+        >
+          重试解析
+        </button>
       </div>
     </div>
   </div>
@@ -331,13 +419,5 @@ onMounted(async () => {
   color: #d48f8f;
   margin: 1rem 0;
   font-size: 0.85rem;
-}
-
-.revisit-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  justify-content: center;
-  margin-top: 1rem;
 }
 </style>

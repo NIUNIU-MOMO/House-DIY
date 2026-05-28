@@ -41,12 +41,40 @@ const storageSaving = ref(false)
 const storageError = ref<string | null>(null)
 const storageSaved = ref(false)
 
-const modelFields: Array<{ key: keyof OmlxModelConfig; label: string; hint: string; required?: boolean }> = [
-  { key: 'llm_model', label: 'LLM', hint: '文本生成，如 house-llm', required: true },
-  { key: 'vlm_model', label: 'VLM（默认）', hint: '户型解析默认模型，如 house-vlm-pro', required: true },
-  { key: 'vlm_model_cad', label: 'VLM（CAD 线稿）', hint: '留空则使用默认 VLM', required: false },
-  { key: 'vlm_model_marketing', label: 'VLM（营销彩图）', hint: '留空则使用默认 VLM', required: false },
-  { key: 'embed_model', label: 'Embedding', hint: '知识库向量，如 house-embed', required: true },
+const modelFields: Array<{
+  key: keyof OmlxModelConfig
+  label: string
+  required?: boolean
+  tooltip: string
+}> = [
+  {
+    key: 'llm_model',
+    label: 'LLM',
+    required: true,
+    tooltip: '文本生成任务使用，如 DesignSpec 生成、方案微调等。',
+  },
+  {
+    key: 'vlm_model',
+    label: 'VLM（默认）',
+    required: true,
+    tooltip: '户型解析默认 VLM；图源未知或未配置专用模型时使用。',
+  },
+  {
+    key: 'vlm_model_cad',
+    label: 'VLM（CAD 线稿）',
+    tooltip: '户型图识别为 CAD 黑白线稿时使用；留空则回退到 VLM（默认）。',
+  },
+  {
+    key: 'vlm_model_marketing',
+    label: 'VLM（营销彩图）',
+    tooltip: '户型图识别为开发商彩色户型图时使用；留空则回退到 VLM（默认）。',
+  },
+  {
+    key: 'embed_model',
+    label: 'Embedding',
+    required: true,
+    tooltip: '知识库向量检索与案例匹配使用的 embedding 模型。',
+  },
 ]
 
 const serviceEntries = computed(() => {
@@ -286,12 +314,7 @@ onMounted(refreshAll)
 
       <section class="model-config-panel">
         <div class="model-config-head">
-          <div>
-            <h2>oMLX 模型 Alias</h2>
-            <p class="muted">
-              切换户型解析等任务使用的模型 alias；保存后立即生效，无需重启 API。
-            </p>
-          </div>
+          <h2>oMLX 模型 Alias</h2>
           <button
             type="button"
             class="btn primary"
@@ -312,36 +335,32 @@ onMounted(refreshAll)
           <p>正在加载模型配置…</p>
         </div>
 
-        <form v-else class="model-config-form" @submit.prevent="saveModelConfig">
+        <form v-else class="model-config-form model-config-form-grid" @submit.prevent="saveModelConfig">
           <div v-for="field in modelFields" :key="field.key" class="form-row">
             <label :for="`model-${field.key}`">
               {{ field.label }}
-              <span v-if="!field.required" class="optional-tag">可选</span>
+              <span class="field-help" tabindex="0">
+                <span class="field-help-icon" aria-hidden="true">?</span>
+                <span class="field-help-tip" role="tooltip">{{ field.tooltip }}</span>
+              </span>
             </label>
             <input
               :id="`model-${field.key}`"
               v-model="modelConfig[field.key]"
               class="input"
               :list="`model-options-${field.key}`"
-              :placeholder="field.hint"
               :required="field.required"
             />
             <datalist :id="`model-options-${field.key}`">
               <option v-for="option in modelOptions(field.key)" :key="option" :value="option" />
             </datalist>
-            <p class="field-hint muted">{{ field.hint }}</p>
           </div>
         </form>
       </section>
 
       <section class="model-config-panel">
         <div class="model-config-head">
-          <div>
-            <h2>项目输出目录</h2>
-            <p class="muted">
-              户型源图、标注快照与设计方案将写入此目录；留空则使用服务端默认路径。
-            </p>
-          </div>
+          <h2>项目输出目录</h2>
           <button
             type="button"
             class="btn primary"
@@ -505,14 +524,14 @@ onMounted(refreshAll)
 
 .model-config-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.25rem;
 }
 
 .model-config-head h2 {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 1.1rem;
 }
 
@@ -522,6 +541,12 @@ onMounted(refreshAll)
   max-width: 560px;
 }
 
+.model-config-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: none;
+  gap: 1rem 1.25rem;
+}
+
 .form-row label {
   display: flex;
   align-items: center;
@@ -529,12 +554,53 @@ onMounted(refreshAll)
   margin-bottom: 0.35rem;
 }
 
-.optional-tag {
-  font-size: 0.75rem;
-  color: #888;
+.field-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.field-help-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #666;
+  color: #999;
+  font-size: 0.65rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: help;
+}
+
+.field-help-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 220px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  background: #1a1a1a;
   border: 1px solid #444;
-  border-radius: 4px;
-  padding: 0 0.35rem;
+  color: #ccc;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-weight: normal;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+
+.field-help:hover .field-help-tip,
+.field-help:focus-within .field-help-tip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .field-hint {
